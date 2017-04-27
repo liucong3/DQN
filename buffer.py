@@ -87,6 +87,7 @@ class ReplayBuffer:
 		self.buffer.enqueue(ReplayBuffer.observation(state, action, None, terminal, None))
 		if len(self.buffer) >= self.size and len(self.episodeLens) > 0:
 			episodeLen = self.episodeLens[0]
+			self.episodeLens.dequeue()
 			self.buffer.dequeue(episodeLen)
 		self.curEpisodeLen += 1
 		if terminal:

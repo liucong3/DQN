@@ -58,11 +58,18 @@ class Option:
 				free.remove(k0)
 		return short
 
+	def save(self, file):
+		Option.saveJSON(file, self.options)
+
 	def load(self, file):
-		'''
-		populate self.options with the json map object read from the configuration file
-		'''
 		self.options = Option.loadJSON(file)
+
+	@staticmethod
+	def saveJSON(file, obj):
+		text = json.dumps(obj, indent=4, sort_keys=False, ensure_ascii=False)
+		f = open(file, 'w')
+		f.write(text)
+		f.close()
 
 	@staticmethod
 	def loadJSON(file):
@@ -119,11 +126,6 @@ class Option:
 			values = (values, )
 		for i in range(len(keys)):
 			self.options[keys[i]] = values[i]
-
-	def save(self, configurationFile):
-		f = open(configurationFile, 'w')
-		f.write(str(self))
-		f.close()
 
 	def __str__(self):
 		return json.dumps(self.options, indent=4,

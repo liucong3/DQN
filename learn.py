@@ -23,18 +23,20 @@ class RL():
 		self.qTarget = qTarget
 		self.replayBuffer = replayBuffer
 		self.syncTarget()
-		self.inputSize, self.outputSize = opt['inputSize', 'outputSize']
-		self.epsEndT, self.epsEnd, self.learnStart, self.discount, self.batchSize, self.doubleDQN, self.randomStarts = \
-				opt['epsEndT', 'epsEnd', 'learnStart', 'discount', 'batchSize', 'doubleDQN', 'randomStarts']
-		self.trainFreq, self.targetFreq, self.reportFreq, self.evalFreq, self.saveFreq, self.savePath = \
-				opt['trainFreq', 'targetFreq', 'reportFreq', 'evalFreq', 'saveFreq', 'savePath']
-		self.saver = tf.train.Saver(params)
+		self.inputSize, self.outputSize, self.batchSize = opt['inputSize', 'outputSize', 'batchSize']
+		self.epsEndT, self.epsEnd, self.learnStart, self.discount, self.doubleDQN, self.randomStarts = opt['epsEndT', 'epsEnd', 'learnStart', 'discount', 'doubleDQN', 'randomStarts']
+		self.trainFreq, self.targetFreq, self.reportFreq, self.evalFreq, self.savePath = opt['trainFreq', 'targetFreq', 'reportFreq', 'evalFreq', 'savePath']
+		if params: self.saver = tf.train.Saver(params)
 		self.terminal = True
-		self.step =  self.episode = int(0)
-		self.averageEpisodeReward = self.episodeReward = 0.0
+		# report
+		self.step = self.episode = int(0)
+		self.totalReward = self.episodeReward = 0.0
 		self.startTime = time.time()
+		self.prevReportTime = self.prevStep = self.prevTotalReward = 0
+		# eval
 		self.evalInfo = []
-		self.lastReportTime = 0
+		self.bestScore = -1
+
 
 	def train(self, maxSteps=None, maxEpisode=None):
 		assert maxSteps or maxEpisode
@@ -47,32 +49,32 @@ class RL():
 			self.epsilonGreedyStep()
 			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal)
 			self.episodeReward += self.prev_reward
-			if self.terminal:
-				self.averageEpisodeReward = 0.9 * self.averageEpisodeReward+ 0.1 * self.episodeReward
+			if self.terminal: 
+				self.totalReward += self.episodeReward
 				self.episodeReward = 0
 				self.episode += 1
 			# train
 			if self.step > self.learnStart:
-				if (self.step + 1) % self.trainFreq == 0:
+				if self.step % self.trainFreq == 0:
 					self.trainStep()
-				if (self.step + 1) % self.targetFreq == 0:
+				if self.step % self.targetFreq == 0:
 					self.syncTarget()
 			# report, save, eval
-			if (self.step + 1) % self.reportFreq == 0 and self.episode:
+			if self.step == 1 or self.step % self.reportFreq == 0:
 				self.report()
-			if self.step > self.learnStart:
-				if (self.step + 1) % self.evalFreq == 0:
-					self.eval()
-				if (self.step + 1) % self.saveFreq == 0:
-					self.save()
+			if self.step > self.learnStart and self.step % self.evalFreq == 0:
+				score = self.eval()
+				self.save(self.bestScore < score)
+				if self.bestScore < score: self.bestScore = score				
 			# terminate
 			if maxSteps and self.step >= maxSteps: break
 			if maxEpisode and self.episode >= maxEpisode: break
 		self.endTime = time.time()
 
 	def syncTarget(self):
-		params = self.qNetwork.getParams()
-		self.qTarget.setParams(params)
+		if self.qTarget:
+			params = self.qNetwork.getParams()
+			self.qTarget.setParams(params)
 
 	def q(self, state, useTarget=False):
 		state = state.reshape([-1, self.inputSize])
@@ -124,16 +126,13 @@ class RL():
 			q2Max = q2.max(1)
 		return batch['reward'] + q2Max * self.discount * (1 - batch['terminal'])
 
-	def save(self):
-		path = self.savePath + '/params'
-		self.saver.save(self.sess, path)
-		print 'Agent is saved to:', path
-
+	def save(self, saveModel=True):
+		if saveParams:
+			path = self.savePath + '/model'
+			self.saver.save(self.sess, path)
+			print 'Model is saved to:', path
 		path = self.savePath + '/evalInfo.json'
-		text = json.dumps(self.evalInfo, indent=4, sort_keys=False, ensure_ascii=False)
-		f = open(path, 'w')
-		f.write(text)
-		f.close()
+		Option.saveJSON(path, self.evalInfo)
 
 	def load(self):
 		path = self.savePath + '/params'
@@ -150,50 +149,39 @@ class RL():
 
 	@staticmethod
 	def duration(dt):
+		# http://www.cnblogs.com/lhj588/archive/2012/04/23/2466653.html
+		dt = float(int(dt))
 		return str(datetime.timedelta(dt / 24 / 3600))
 
 	def report(self):
-		self.lastReportTime = self.lastReportTime or self.startTime
 		curTime = time.time()
-		t = RL.duration(curTime - self.startTime)
-		dt = RL.duration(curTime - self.lastReportTime)
-		self.lastReportTime = curTime
-		print 'step:%d/e:%d t:%s [dt:%s] reward:%f' % (self.step, self.episode, t, dt, self.averageEpisodeReward)
+		if self.episode and self.prevStep: # to prevent dividing by zero episode
+			step = self.step - self.prevStep
+			episode = self.episode - self.prevEpisod
+			time1 = RL.duration(curTime - self.prevReportTime)
+			time2 = RL.duration(curTime - self.startTime)
+			totalReward = self.totalReward - self.prevTotalReward
+			print 'S:%d E:%d T|%s, s:%d e:%d t|%s, s/e:%.2f r/e:%.2f' % (self.step, self.episode, time2, step, episode, time1, (step / episode), (totalReward / episode))
+		self.prevStep = self.step
+		self.prevEpisod = self.episode
+		self.prevReportTime = curTime
+		self.prevTotalReward = self.totalReward
 
-	def eval(self):
-		pass
+	def eval(self, evalInfo={}):
+		curTime = time.time()
+		evalInfo['step'] = self.step
+		evalInfo['time'] = curTime - self.startTime	
+		evalInfo['time_eval'] = curTime - self.prevReportTime
+		self.evalInfo.append(evalInfo)
+		self.prevReportTime = curTime
+		textInfo = 'Eval'
+		for key, value in evalInfo.iteritems():
+			if key.startswith('time'): textInfo += ' ' + key + '|' +  RL.duration(value)
+			else: textInfo += ' ' + key + ':' +  str(value)
+		print textInfo
+		return -1
 
-
-
-class AtariRL(RL):
-
-	def __init__(self, opt):
-		gameEnv = AtariEnv.create(opt) # initialize the game environment
-		self.optimizer = tf.train.RMSPropOptimizer(learning_rate=opt['learningRate'], decay=0.95, epsilon=0.01, centered=True)
-		# initialize session
-		config = tf.ConfigProto()
-		# config.log_device_placement = True
-		config.gpu_options.allow_growth = True
-		self.sess = tf.Session(config=config)
-		# initialize neural networks
-		opt['convShape'] = [opt['height'], opt['width'], opt['histLen']]
-		opt['outputSize'] = gameEnv.getActions()
-		with tf.device(opt['device']):
-			qNetwork = Net(opt, self.sess, name='qNetwork', optimizer=self.optimizer)
-			self.sess.run(tf.global_variables_initializer())
-			if opt['targetFreq']:
-				qTarget = Net(opt, self.sess, name='qTarget')
-				
-			else:
-				qTarget = qNetwork
-		# initialize replay buffer
-		replayBuffer = AtariBuffer(int(opt['bufSize']), int(opt['histLen']))
-		# initializer
-		opt['inputSize'] = int(np.prod(opt['convShape']))
-		RL.__init__(self, opt, gameEnv, qNetwork, qTarget, qNetwork.params, replayBuffer)
-		# other data
-		self.maxReward = opt.get('maxReward', None)
-		self.imageSize = (opt['height'], opt['width'])
+class AtariPlayer(RL):
 
 	@staticmethod
 	def preprocessState(state, imageSize):
@@ -203,13 +191,95 @@ class AtariRL(RL):
 		screen = np.asarray(screen)
 		return screen
 
+	@staticmethod
+	def initOptions(opt, gameEnv):
+		opt['convShape'] = [opt['height'], opt['width'], opt['histLen']]
+		opt['outputSize'] = gameEnv.getActions()
+		opt['inputSize'] = int(np.prod(opt['convShape']))
+
+	def __init__(self, opt, sess, qNetwork):
+		gameEnv = AtariEnv.create(opt) # initialize the game environment
+		AtariPlayer.initOptions(opt, gameEnv)
+		self.sess = sess
+		# initialize replay buffer
+		replayBuffer = AtariBuffer(1, int(opt['histLen'])) # small buffer always clean up obsolete spaces
+		# initializer
+		RL.__init__(self, opt, gameEnv, qNetwork, None, None, replayBuffer)
+		# other data
+		self.imageSize = (opt['height'], opt['width'])
+		self.render, self.epsTest = opt['render', 'epsTest']
+		self.randomStarts = None
+
+	def curEpsilon(self):
+		return self.epsTest
+
+	def play(self, maxSteps=None, maxEpisode=None):
+		assert maxSteps or maxEpisode
+		self.step = 0
+		self.episode = 0
+		self.episodeReward = 0.0
+		self.totalReward = 0.0
+		while True:
+			self.step += 1
+			# epsilon greedy
+			self.epsilonGreedyStep()
+			self.state = AtariPlayer.preprocessState(self.state, self.imageSize)
+			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal)
+			# accumulate rewards
+			self.episodeReward += self.prev_reward
+			if self.terminal:
+				self.totalReward += self.episodeReward
+				self.episodeReward = 0
+				self.episode += 1
+			# render
+			if self.render:
+				self.gameEnv.render()
+			# terminate
+			if maxSteps and self.step >= maxSteps: break
+			if maxEpisode and self.episode >= maxEpisode: break
+		self.endTime = time.time()
+		avgTotalReward = self.totalReward / self.episode if self.episode else 0
+		return {'totalReward':avgTotalReward, 'step_eval':self.step, 'episode_eval':self.episode}
+
+class AtariRL(RL):
+
+	def __init__(self, opt):
+		gameEnv = AtariEnv.create(opt) # initialize the game environment
+		AtariPlayer.initOptions(opt, gameEnv)
+		self.optimizer = tf.train.RMSPropOptimizer(learning_rate=opt['learningRate'], decay=0.95, epsilon=0.01, centered=True)
+		# initialize session
+		config = tf.ConfigProto()
+		# config.log_device_placement = True
+		config.gpu_options.allow_growth = True
+		self.sess = tf.Session(config=config)
+		# initialize neural networks
+		with tf.device(opt['device']):
+			qNetwork = Net(opt, self.sess, name='qNetwork', optimizer=self.optimizer)
+			self.sess.run(tf.global_variables_initializer())
+			qTarget = Net(opt, self.sess, name='qTarget') if opt['targetFreq'] else None
+		# initialize replay buffer
+		replayBuffer = AtariBuffer(int(opt['bufSize']), int(opt['histLen']))
+		# initializer
+		RL.__init__(self, opt, gameEnv, qNetwork, qTarget, qNetwork.params, replayBuffer)
+		# other data
+		self.maxReward = opt.get('maxReward', None)
+		self.imageSize = (opt['height'], opt['width'])
+		# evaluator
+		self.evaluator = AtariPlayer(opt, self.sess, self.qNetwork)
+		self.evalMaxSteps, self.evalMaxEpisode = opt['evalMaxSteps', 'evalMaxEpisode']
+
+
 	def epsilonGreedyStep(self):
 		RL.epsilonGreedyStep(self)
-		self.state = AtariRL.preprocessState(self.state, self.imageSize)
+		self.state = AtariPlayer.preprocessState(self.state, self.imageSize)
 		if self.maxReward:
 			self.prev_reward = min(self.prev_reward, self.maxReward)
 			self.prev_reward = max(self.prev_reward, -self.maxReward)
 
+	def eval(self, evalInfo={}):
+		evalInfo = self.evaluator.play(self.evalMaxSteps, self.evalMaxEpisode)
+		RL.eval(self, evalInfo)
+		return evalInfo['totalReward']
 
 
 ##################

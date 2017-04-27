@@ -39,5 +39,4 @@
 	"epsTest" : 0.05,
 	"evalMaxEpisode" : 30,
 	"evalMaxSteps" : 125000,
-	"evalBatchSize" : 1000
 }
