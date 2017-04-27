@@ -1,0 +1,43 @@
+{
+    "device" : "/cpu:0",
+    "env" : null,
+	"learningRate" : 0.00025,
+
+	"dueling" : false,
+	"doubleDQN" : false,
+	"maxReward" : 1,
+	"clipDelta" : 1,
+
+	"bufSize" : 1e6,
+	"histLen" : 4,
+	"height" : 84,
+	"width" : 84,
+	"convLayers" : [
+		[32, [8, 8], [4, 4]],
+		[64, [4, 4], [2, 2]],
+		[64, [3, 3], [1, 1]]
+	],
+	"linearLayers" : [512],
+
+	"trainSteps" : 5e7,
+	"discount" : 0.99,
+	"batchSize" : 32,
+	"actrep" : 4,
+	"randomStarts" : 30,
+	"epsEnd" : 0.1,
+	"epsEndT" : 1e6,
+	"targetFreq" : 10000,
+	"learnStart" : 50000,
+	"trainFreq" : 4,
+	"reportFreq" : 10000,
+	"saveFreq" : 10000,
+	"evalFreq" : 100000,
+
+	"savePath" : null,
+	"render" : false,
+
+	"epsTest" : 0.05,
+	"evalMaxEpisode" : 30,
+	"evalMaxSteps" : 125000,
+	"evalBatchSize" : 1000
+}
