@@ -1,4 +1,7 @@
 # DQN
+This is an implementation of the *deep reinforcement learning* (DQN) based on
+* [Tensorflow](https://www.tensorflow.org)
+* [GYM](https://github.com/openai/gym) environment
 ## Install dependencies
 * Kivy
 ```bash
