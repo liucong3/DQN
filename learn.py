@@ -127,7 +127,7 @@ class RL():
 		return batch['reward'] + q2Max * self.discount * (1 - batch['terminal'])
 
 	def save(self, saveModel=True):
-		if saveParams:
+		if saveModel:
 			path = self.savePath + '/model'
 			self.saver.save(self.sess, path)
 			print 'Model is saved to:', path
@@ -135,7 +135,7 @@ class RL():
 		Option.saveJSON(path, self.evalInfo)
 
 	def load(self):
-		path = self.savePath + '/params'
+		path = self.savePath + '/model'
 		if os.path.exists(path + '.index'):
 			self.saver.restore(self.sess, path)
 			self.syncTarget()
