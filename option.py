@@ -131,6 +131,12 @@ class Option:
 		return json.dumps(self.options, indent=4,
 				sort_keys=False, ensure_ascii=False)
 
+	def copy(self):
+		class OptionCopy(Option):
+			def __init__(self, opt):
+				self.options = opt.options
+		return OptionCopy(self)
+
 
 ##################
 #      TEST      #

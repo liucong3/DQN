@@ -60,15 +60,13 @@ class Net:
 			lastOp = tf.reshape(lastOp ,[-1] + convShape)
 			for i, layer in enumerate(convLayers):
 				[outputSize, kernelSize, strides] = layer
-				lastOp, W, b = Net.conv2d(lastOp, outputSize, kernelSize, strides, 
-													activation=tf.nn.relu, name='conv'+str(i))
+				lastOp, W, b = Net.conv2d(lastOp, outputSize, kernelSize, strides, activation=tf.nn.relu, name='conv'+str(i))
 				self.params.append(W)
 				self.params.append(b)
 			lastOp = tf.reshape(lastOp, [-1, int(np.prod(lastOp.get_shape()[1:]))])
 		if linearLayers:
 			for i, outputSize in enumerate(linearLayers):
-				lastOp, W, b = Net.linear(lastOp, outputSize, 
-													activation=tf.nn.relu, name='lin'+str(i))
+				lastOp, W, b = Net.linear(lastOp, outputSize, activation=tf.nn.relu, name='lin'+str(i))
 				self.params.append(W)
 				self.params.append(b)
 		self.output = lastOp
@@ -112,7 +110,6 @@ class Net:
 		if clipDelta:
 			deltasCliped = tf.clip_by_value(deltas, -clipDelta, clipDelta)
 			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(deltas) - tf.abs(deltasCliped)) * clipDelta)
-
 		else:
 			loss = tf.reduce_sum(tf.square(deltas) / 2)
 		return loss

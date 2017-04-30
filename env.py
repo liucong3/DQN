@@ -136,7 +136,7 @@ class AtariEnv:
 
 	@staticmethod
 	def create(opt):
-		if not opt['env']:
+		if not opt.get('env', None):
 			print 'Please try one of the following', str(len(AtariEnv.games)), 'commands:'
 			for game in AtariEnv.games:
 				print 'python', __file__ ,'--env', game

@@ -7,6 +7,7 @@ from PIL import Image
 from net import Net
 from env import AtariEnv
 from buffer import AtariBuffer
+from option import Option
 
 '''
 Implementation of reinforcement Learning, including the following techniques:
@@ -47,7 +48,7 @@ class RL():
 			self.step += 1
 			# epsilon greedy
 			self.epsilonGreedyStep()
-			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal)
+			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal, self.is_episode_step)
 			self.episodeReward += self.prev_reward
 			if self.terminal: 
 				self.totalReward += self.episodeReward
@@ -92,6 +93,7 @@ class RL():
 		return epsilon
 
 	def epsilonGreedyStep(self):
+		self.is_episode_step = False
 		if self.terminal:
 			if self.randomStarts:
 				self.state, self.prev_reward, self.terminal, _ = self.gameEnv.nextRandomGame(training=True)
@@ -102,17 +104,18 @@ class RL():
 			# epsilon-greedy
 			if np.random.rand() < self.curEpsilon():
 				self.action = np.random.randint(self.outputSize)
+				self.is_episode_step = True
 			else:
 				state = self.replayBuffer[-1]['state'] # contains a number (histLen) of screens
 				q = self.q(state)
 				self.action = np.argmax(q.reshape(-1))
 			self.state, self.prev_reward, self.terminal, _ = self.gameEnv.step(self.action, training=True)
 
-
 	def trainStep(self):
 		batch = self.replayBuffer.sample(self.batchSize)
 		if batch:
-			target = self.computTarget(batch)
+			q2Max = self.computTarget(batch)
+			target = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 
 	def computTarget(self, batch):
@@ -124,10 +127,10 @@ class RL():
 		else:
 			q2 = self.q(next_state, useTarget=True)
 			q2Max = q2.max(1)
-		return batch['reward'] + q2Max * self.discount * (1 - batch['terminal'])
+		return q2Max
 
 	def save(self, saveModel=True):
-		if saveModel:
+		if saveParams:
 			path = self.savePath + '/model'
 			self.saver.save(self.sess, path)
 			print 'Model is saved to:', path
@@ -135,7 +138,7 @@ class RL():
 		Option.saveJSON(path, self.evalInfo)
 
 	def load(self):
-		path = self.savePath + '/model'
+		path = self.savePath + '/params'
 		if os.path.exists(path + '.index'):
 			self.saver.restore(self.sess, path)
 			self.syncTarget()
@@ -202,7 +205,9 @@ class AtariPlayer(RL):
 		AtariPlayer.initOptions(opt, gameEnv)
 		self.sess = sess
 		# initialize replay buffer
-		replayBuffer = AtariBuffer(1, int(opt['histLen'])) # small buffer always clean up obsolete spaces
+		opt = opt.copy()
+		opt['bufSize'] = 1
+		replayBuffer = AtariBuffer(opt) # small buffer always clean up obsolete spaces
 		# initializer
 		RL.__init__(self, opt, gameEnv, qNetwork, None, None, replayBuffer)
 		# other data
@@ -243,7 +248,7 @@ class AtariPlayer(RL):
 
 class AtariRL(RL):
 
-	def __init__(self, opt):
+	def __init__(self, opt, NetType=Net, BufferType=AtariBuffer):
 		gameEnv = AtariEnv.create(opt) # initialize the game environment
 		AtariPlayer.initOptions(opt, gameEnv)
 		self.optimizer = tf.train.RMSPropOptimizer(learning_rate=opt['learningRate'], decay=0.95, epsilon=0.01, centered=True)
@@ -254,11 +259,11 @@ class AtariRL(RL):
 		self.sess = tf.Session(config=config)
 		# initialize neural networks
 		with tf.device(opt['device']):
-			qNetwork = Net(opt, self.sess, name='qNetwork', optimizer=self.optimizer)
+			qNetwork = NetType(opt, self.sess, name='qNetwork', optimizer=self.optimizer)
 			self.sess.run(tf.global_variables_initializer())
-			qTarget = Net(opt, self.sess, name='qTarget') if opt['targetFreq'] else None
+			qTarget = NetType(opt, self.sess, name='qTarget') if opt['targetFreq'] else None
 		# initialize replay buffer
-		replayBuffer = AtariBuffer(int(opt['bufSize']), int(opt['histLen']))
+		replayBuffer = BufferType(opt)
 		# initializer
 		RL.__init__(self, opt, gameEnv, qNetwork, qTarget, qNetwork.params, replayBuffer)
 		# other data
