@@ -67,8 +67,9 @@ class Queue:
 
 class ReplayBuffer:
 	
-	def __init__(self, size):
-		self.size = size
+	def __init__(self, opt):
+		self.size = int(opt['bufSize'])
+		self.discount = opt['discount']
 		self.reset()
 
 	def reset(self, size=None):
@@ -78,13 +79,13 @@ class ReplayBuffer:
 		self.episodeLens = Queue()
 
 	@staticmethod
-	def observation(state, action, reward, terminal, next_state):
-		return {'state':state, 'action':action, 'reward':reward, 'terminal':terminal, 'next_state':next_state}
+	def observation(state, action, reward, terminal, next_state, is_episode_step):
+		return {'state':state, 'action':action, 'reward':reward, 'terminal':terminal, 'next_state':next_state, 'is_episode_step':is_episode_step}
 
-	def append(self, state, action, prev_reward, terminal):
+	def append(self, state, action, prev_reward, terminal, is_episode_step):
 		if self.curEpisodeLen > 0:
 			self.buffer[-1]['reward'] = prev_reward
-		self.buffer.enqueue(ReplayBuffer.observation(state, action, None, terminal, None))
+		self.buffer.enqueue(ReplayBuffer.observation(state, action, None, terminal, None, is_episode_step))
 		if len(self.buffer) >= self.size and len(self.episodeLens) > 0:
 			episodeLen = self.episodeLens[0]
 			self.episodeLens.dequeue()
@@ -105,12 +106,13 @@ class ReplayBuffer:
 		# return None if nothing to sample
 		all_terminal = True
 		for i in xrange(size - 1):
-			if not self[i]['terminal']:
+			if not self.buffer[i]['terminal']:
 				all_terminal = False
 				break
 		if all_terminal: return None
 		# sample
-		batch = ReplayBuffer.observation([],[],[],[],[])
+		batch = ReplayBuffer.observation([],[],[],[],[],[])
+		batch['discount'] = []
 		while n > 0:
 			k = np.random.randint(size - 1)
 			o = self[k]
@@ -119,6 +121,7 @@ class ReplayBuffer:
 				batch['state'].append(o['state'])
 				batch['reward'].append(o['reward'])
 				batch['action'].append(o['action'])
+				batch['discount'].append(self.discount)
 				o2 = self[k + 1]
 				batch['terminal'].append(o2['terminal'])
 				batch['next_state'].append(o2['state'])
@@ -135,13 +138,13 @@ class ReplayBuffer:
 
 class AtariBuffer(ReplayBuffer):
 	
-	def __init__(self, bufSize, histLen):
-		ReplayBuffer.__init__(self, bufSize)
-		self.histLen = histLen
+	def __init__(self, opt):
+		self.histLen = int(opt['histLen'])
+		ReplayBuffer.__init__(self, opt)
 
-	def append(self, state, action, prev_reward, terminal):
+	def append(self, state, action, prev_reward, terminal, is_episode_step):
 		state = state.reshape(-1).copy().astype(np.uint8)
-		ReplayBuffer.append(self, state, action, prev_reward, terminal)
+		ReplayBuffer.append(self, state, action, prev_reward, terminal, is_episode_step)
 
 	def _getState(self, index):
 		shape = list(self.buffer[0]['state'].shape) + [self.histLen]
@@ -153,8 +156,9 @@ class AtariBuffer(ReplayBuffer):
 		return state.reshape(-1)
 
 	def __getitem__(self, index):
-		o = self.buffer[index]
-		return ReplayBuffer.observation(self._getState(index), o['action'], o['reward'], o['terminal'], None)
+		o = self.buffer[index].copy()
+		o['state'] = self._getState(index)
+		return o
 
 
 ##################
@@ -181,13 +185,17 @@ if __name__ == '__main__':
 		q.dequeue()
 
 	# Test AtariBuffer
-	buffer = AtariBuffer(9, 2)
+	from option import Option
+	opt = Option('config.json')
+	opt['bufSize'] = 9
+	opt['histLen'] = 2
+	buffer = AtariBuffer(opt)
 	for i in range(1,3):
-		buffer.append(np.ones([1,1])*255/i, i, i-1, False)
-	buffer.append(np.ones([1,1])*255/3, 3, 3-1, True)
+		buffer.append(np.ones([1,1])*255/i, i, i-1, False, True)
+	buffer.append(np.ones([1,1])*255/3, 3, 3-1, True, False)
 	for i in range(4,10):
-		buffer.append(np.ones([1,1])*255/i, i, i-1, False)
-	buffer.append(np.ones([1,1])*255/10, 10, 10-1, True)
+		buffer.append(np.ones([1,1])*255/i, i, i-1, False, True)
+	buffer.append(np.ones([1,1])*255/10, 10, 10-1, True, False)
 	print 'len:', len(buffer)
 	for i in range(len(buffer)):
 		print buffer[i]
