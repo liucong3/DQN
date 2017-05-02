@@ -30,7 +30,7 @@ class RL():
 		if params: self.saver = tf.train.Saver(params)
 		self.terminal = True
 		# report
-		self.step = self.episode = int(0)
+		self.step = self.episode = 0
 		self.totalReward = self.episodeReward = 0.0
 		self.startTime = time.time()
 		self.prevReportTime = self.prevStep = self.prevTotalReward = 0
@@ -229,7 +229,7 @@ class AtariPlayer(RL):
 			# epsilon greedy
 			self.epsilonGreedyStep()
 			self.state = AtariPlayer.preprocessState(self.state, self.imageSize)
-			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal)
+			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal, False)
 			# accumulate rewards
 			self.episodeReward += self.prev_reward
 			if self.terminal:

@@ -41,7 +41,7 @@ class Net:
 		self.buildOutputModule()
 		self.__buildAssignOps()
 
-	def buildStateAbstractionModule(self):
+	def buildStateAbstractionModule(self, conv_activation=tf.nn.relu, linear_activation=tf.nn.relu):
 		convShape = self.opt['convShape'] # [height=84, width=84, histLen=4]
 		convLayers = self.opt.get('convLayers', None)
 		'''
@@ -60,13 +60,13 @@ class Net:
 			lastOp = tf.reshape(lastOp ,[-1] + convShape)
 			for i, layer in enumerate(convLayers):
 				[outputSize, kernelSize, strides] = layer
-				lastOp, W, b = Net.conv2d(lastOp, outputSize, kernelSize, strides, activation=tf.nn.relu, name='conv'+str(i))
+				lastOp, W, b = Net.conv2d(lastOp, outputSize, kernelSize, strides, activation=conv_activation, name='conv'+str(i))
 				self.params.append(W)
 				self.params.append(b)
 			lastOp = tf.reshape(lastOp, [-1, int(np.prod(lastOp.get_shape()[1:]))])
 		if linearLayers:
 			for i, outputSize in enumerate(linearLayers):
-				lastOp, W, b = Net.linear(lastOp, outputSize, activation=tf.nn.relu, name='lin'+str(i))
+				lastOp, W, b = Net.linear(lastOp, outputSize, activation=linear_activation, name='lin'+str(i))
 				self.params.append(W)
 				self.params.append(b)
 		self.output = lastOp
@@ -105,8 +105,8 @@ class Net:
 		self.targets = tf.placeholder(tf.float32, [None], name='targets')
 		self.action = tf.placeholder(tf.int32, [None], name='action')
 		actionOneHot = tf.one_hot(self.action, outputSize, 1.0, 0.0)
-		qOneHot = tf.reduce_sum(self.output * actionOneHot, 1)
-		deltas = self.targets - qOneHot
+		q = tf.reduce_sum(self.output * actionOneHot, 1)
+		deltas = self.targets - q
 		if clipDelta:
 			deltasCliped = tf.clip_by_value(deltas, -clipDelta, clipDelta)
 			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(deltas) - tf.abs(deltasCliped)) * clipDelta)
@@ -164,6 +164,7 @@ class Net:
 ##################
 
 if __name__ == '__main__':
+	'''
 	from option import Option
 	opt = Option('config.json')
 	sess = tf.Session()
@@ -192,4 +193,74 @@ if __name__ == '__main__':
 	print 'params:'
 	for i in range(len(new_params)):
 		print np.mean(new_params[i]), np.mean(old_params[i])
+	'''
+
+	from option import Option
+	opt = Option('config.json')
+	opt['height'] = 28
+	opt['width'] = 28
+	opt['histLen'] = 1
+	opt['convShape'] = [opt['height'], opt['width'], opt['histLen']]
+	opt['outputSize'] = 10
+	opt['clipDelta'] = 1
+	opt['learningRate'] = 1e-4
+
+	opt['convLayers'] = [
+		[32, [5, 5], [1, 1]],
+		[64, [5, 5], [1, 1]]
+	]
+	opt['linearLayers'] = [1024]
+
+	def max_pool_2x2(x):
+	  return tf.nn.max_pool(x, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+	def conv_activation(x):
+		x = tf.nn.relu(x)
+		return max_pool_2x2(x)
+
+	class ConvNet(Net):
+
+		def __init__(self):
+			sess = tf.Session()
+			optimizer = tf.train.AdamOptimizer(1e-4)
+			Net.__init__(self, opt, sess=sess, optimizer=optimizer)
+			self.sess.run(tf.global_variables_initializer())
+
+		def buildStateAbstractionModule(self):
+			Net.buildStateAbstractionModule(self, conv_activation=conv_activation, linear_activation=tf.nn.relu)
+
+		def buildOutputModule(self):
+			outputSize = self.opt['outputSize']
+			lastOp = self.output
+			lastOp, W, b = Net.linear(lastOp, outputSize, name='actionValue')
+			self.params.append(W)
+			self.params.append(b)
+			self.output = lastOp		
+
+		def buildLoss(self):
+			outputSize = self.opt['outputSize']
+			clipDelta = self.opt.get('clipDelta', None)
+			self.labels = tf.placeholder(tf.float32, [None, outputSize], name='labels')
+			cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.labels, logits=self.output))
+			correct_prediction = tf.equal(tf.argmax(self.output,1), tf.argmax(self.labels,1))
+			self.accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+			return cross_entropy
+
+		def trainStep(self, input_, labels):
+			feed_dict = {self.input:input_, self.labels:labels}
+			self.sess.run(self.applyGrads, feed_dict=feed_dict)
+
+		def eval(self, images, labels):
+			return self.accuracy.eval(session=self.sess, feed_dict={self.input:images, self.labels:labels})
+
+	net = ConvNet()
+	from tensorflow.examples.tutorials.mnist import input_data
+	mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
+
+	for i in range(20000):
+		batch = mnist.train.next_batch(50)
+		if i % 100 == 0:
+			print 'Step %d, training accuracy: %g' % (i, net.eval(batch[0], batch[1]))
+		net.trainStep(batch[0], batch[1])
+	print 'Test accuracy %g' % net.eval(mnist.test.images, mnist.test.labels)
 
