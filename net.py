@@ -106,17 +106,21 @@ class Net:
 		self.action = tf.placeholder(tf.int32, [None], name='action')
 		actionOneHot = tf.one_hot(self.action, outputSize, 1.0, 0.0)
 		q = tf.reduce_sum(self.output * actionOneHot, 1)
-		deltas = self.targets - q
+		self.deltas = self.targets - q
 		if clipDelta:
-			deltasCliped = tf.clip_by_value(deltas, -clipDelta, clipDelta)
-			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(deltas) - tf.abs(deltasCliped)) * clipDelta)
+			deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
+			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(self.deltas) - tf.abs(deltasCliped)) * clipDelta)
 		else:
-			loss = tf.reduce_sum(tf.square(deltas) / 2)
+			loss = tf.reduce_sum(tf.square(self.deltas) / 2)
 		return loss
 
 	def __buildGrad(self, loss):
-		grads = self.optimizer.compute_gradients(loss, self.params)
-		self.applyGrads = self.optimizer.apply_gradients(grads)
+		self.grads = self.optimizer.compute_gradients(loss, self.params)
+		self.applyGrads = self.optimizer.apply_gradients(self.grads)
+
+	def getDebugInfo(self, input_, targets, action):
+		feed_dict = {self.input:input_, self.targets:targets, self.action:action}
+		return self.sess.run((self.deltas, self.output, self.grads), feed_dict=feed_dict)
 
 	##### STATIC UTILS #####
 
@@ -222,7 +226,8 @@ if __name__ == '__main__':
 
 		def __init__(self):
 			sess = tf.Session()
-			optimizer = tf.train.AdamOptimizer(1e-4)
+			#optimizer = tf.train.AdamOptimizer(1e-4)
+			optimizer = tf.train.RMSPropOptimizer(learning_rate=0.00025, decay=0.95, epsilon=0.01, centered=True)
 			Net.__init__(self, opt, sess=sess, optimizer=optimizer)
 			self.sess.run(tf.global_variables_initializer())
 

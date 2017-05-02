@@ -31,12 +31,13 @@ class RL():
 		self.terminal = True
 		# report
 		self.step = self.episode = 0
-		self.totalReward = self.episodeReward = 0.0
+		self.totalReward = self.episodeReward = self.prevTotalReward= 0.0
 		self.startTime = time.time()
-		self.prevReportTime = self.prevStep = self.prevTotalReward = 0
+		self.prevReportTime = self.prevStep = 0
 		# eval
 		self.evalInfo = []
 		self.bestScore = -1
+		self.evalBatchSize = opt.get('evalBatchSize', None)
 
 
 	def train(self, maxSteps=None, maxEpisode=None):
@@ -74,6 +75,7 @@ class RL():
 
 	def syncTarget(self):
 		if self.qTarget:
+			print 'syncTarget -- ' + time.ctime()
 			params = self.qNetwork.getParams()
 			self.qTarget.setParams(params)
 
@@ -114,6 +116,7 @@ class RL():
 	def trainStep(self):
 		batch = self.replayBuffer.sample(self.batchSize)
 		if batch:
+			#print 'trainStep -- ' + time.ctime()
 			q2Max = self.computTarget(batch)
 			target = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
@@ -130,7 +133,7 @@ class RL():
 		return q2Max
 
 	def save(self, saveModel=True):
-		if saveParams:
+		if saveModel:
 			path = self.savePath + '/model'
 			self.saver.save(self.sess, path)
 			print 'Model is saved to:', path
@@ -138,11 +141,11 @@ class RL():
 		Option.saveJSON(path, self.evalInfo)
 
 	def load(self):
-		path = self.savePath + '/params'
+		path = self.savePath + '/model'
 		if os.path.exists(path + '.index'):
 			self.saver.restore(self.sess, path)
-			self.syncTarget()
 			print 'Agent is loaded from:', path
+			self.syncTarget()
 
 		path = self.savePath + '/evalInfo.json'
 		try:
@@ -157,6 +160,7 @@ class RL():
 		return str(datetime.timedelta(dt / 24 / 3600))
 
 	def report(self):
+		print time.ctime()
 		curTime = time.time()
 		if self.episode and self.prevStep: # to prevent dividing by zero episode
 			step = self.step - self.prevStep
@@ -169,20 +173,61 @@ class RL():
 		self.prevEpisod = self.episode
 		self.prevReportTime = curTime
 		self.prevTotalReward = self.totalReward
+		self.__printDebugInfo()
+
+	@staticmethod
+	def printInfo(info):
+		keys = info.keys()
+		keys.sort()
+		for key in keys:
+			value = info[key]
+			if key.startswith('time'): print '\t' + key + '|' +  RL.duration(value)
+			elif type(value).__name__.find('float') != -1: print '\t' + key + ': %.6f' % value
+			else: print '\t' + key + ': ' +  str(value)
 
 	def eval(self, evalInfo={}):
 		curTime = time.time()
 		evalInfo['step'] = self.step
 		evalInfo['time'] = curTime - self.startTime	
 		evalInfo['time_eval'] = curTime - self.prevReportTime
+		print 'Evaluation:'
+		RL.printInfo(evalInfo)
 		self.evalInfo.append(evalInfo)
 		self.prevReportTime = curTime
-		textInfo = 'Eval'
-		for key, value in evalInfo.iteritems():
-			if key.startswith('time'): textInfo += ' ' + key + '|' +  RL.duration(value)
-			else: textInfo += ' ' + key + ':' +  str(value)
-		print textInfo
 		return -1
+
+	def __printDebugInfo(self):
+		if not self.evalBatchSize: return
+		batch = self.replayBuffer.sample(self.evalBatchSize)
+		if not batch: return
+		q2Max = self.computTarget(batch)
+		state = batch['state']
+		action = batch['action']
+		targets = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
+		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action)
+		params = self.qNetwork.getParams()
+		info = {}
+		info['TD'] = np.abs(deltas).mean()
+		info['deltas mean'] = deltas.mean()
+		info['deltas std'] = deltas.std()
+		info['Q mean'] = output.mean()
+		info['Q std'] = output.std()
+		norms = []
+		maxs = []
+		for param in params:
+			norms.append(np.abs(param).mean())
+			maxs.append(np.abs(param).max())
+		info['param norm'] = str(norms)
+		info['param max'] = str(maxs)
+		norms = []
+		maxs = []
+		for grad in grads:
+			norms.append(np.abs(grad).mean() / self.evalBatchSize)
+			maxs.append(np.abs(grad).max() / self.evalBatchSize)
+		info['grads norm'] = str(norms)
+		info['grads max'] = str(maxs)
+		print 'Debug info:'
+		RL.printInfo(info)
 
 class AtariPlayer(RL):
 

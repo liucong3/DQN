@@ -75,6 +75,7 @@ class FastBuffer(AtariBuffer):
 		# format data
 		batch['state'] = np.array(batch['state'])
 		batch['reward'] = np.array(batch['reward']).astype(np.float)
+		batch['discount'] = np.array(batch['discount']).astype(np.float)
 		batch['terminal'] = np.array(batch['terminal']).astype(np.float)
 		batch['next_state'] = np.array(batch['next_state'])
 		return batch
