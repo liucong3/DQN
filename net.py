@@ -129,9 +129,14 @@ class Net:
 		return tf.get_variable(name, shape, initializer=tf.random_uniform_initializer(-stddev, stddev))
 		# return tf.Variable(tf.truncated_normal(shape, stddev=stddev, dtype=dtype), name=name)
 
+	'''
 	@staticmethod
 	def getBias(shape, init=0.0, dtype=tf.float32, name='bias'):
 		return tf.get_variable(name, shape, initializer=tf.constant_initializer(init))
+	'''
+	@staticmethod
+	def getBias(shape, stddev=0.01, dtype=tf.float32, name='bias'):
+		return tf.get_variable(name, shape, initializer=tf.random_uniform_initializer(-stddev, stddev))
 
 	@staticmethod
 	def conv2d(input_, outputSize, kernelSize, strides, stddev=None, activation=None, name='conv2d'):
@@ -141,7 +146,7 @@ class Net:
 			stddev = 1.0 / float(np.sqrt(np.prod(kernelShape[:-1])))
 		with tf.variable_scope(name):
 			weight = Net.getWeights(kernelShape, stddev)
-			bias = Net.getBias([outputSize]) # , stddev)
+			bias = Net.getBias([outputSize], stddev)
 			strides = [1, strides[0], strides[1], 1]
 			conv = tf.nn.conv2d(input_, weight, strides=strides, padding='SAME', data_format='NHWC')
 			out = tf.nn.bias_add(conv, bias, 'NHWC')
@@ -156,7 +161,7 @@ class Net:
 			stddev = 1.0 / float(np.sqrt(inputSize))
 		with tf.variable_scope(name):
 			weight = Net.getWeights([inputSize, outputSize], stddev)
-			bias = Net.getBias([outputSize]) # , stddev)
+			bias = Net.getBias([outputSize], stddev)
 			out = tf.matmul(input_, weight) + bias
 			if activation:
 				out = activation(out)
@@ -227,7 +232,7 @@ if __name__ == '__main__':
 		def __init__(self):
 			sess = tf.Session()
 			#optimizer = tf.train.AdamOptimizer(1e-4)
-			optimizer = tf.train.RMSPropOptimizer(learning_rate=0.00025, decay=0.95, epsilon=0.01, centered=True)
+			optimizer = tf.train.RMSPropOptimizer(learning_rate=1e-4, decay=0.95, epsilon=0.01, centered=True)
 			Net.__init__(self, opt, sess=sess, optimizer=optimizer)
 			self.sess.run(tf.global_variables_initializer())
 

@@ -217,17 +217,28 @@ class RL():
 		for param in params:
 			norms.append(np.abs(param).mean())
 			maxs.append(np.abs(param).max())
-		info['param norm'] = str(norms)
-		info['param max'] = str(maxs)
+		info['param norm'] = RL.debugListRepr(norms)
+		info['param max'] = RL.debugListRepr(maxs)
 		norms = []
 		maxs = []
 		for grad in grads:
 			norms.append(np.abs(grad).mean() / self.evalBatchSize)
 			maxs.append(np.abs(grad).max() / self.evalBatchSize)
-		info['grads norm'] = str(norms)
-		info['grads max'] = str(maxs)
+		info['grads norm'] = RL.debugListRepr(norms)
+		info['grads max'] = RL.debugListRepr(maxs)
 		print 'Debug info:'
 		RL.printInfo(info)
+
+	@staticmethod
+	def debugListRepr(li):
+		repr = '['
+		for i in range(len(li)):
+			if i == 0:
+				repr += '%.6f' % li[i]
+			else:
+				repr += ', %.6f' % li[i]
+		repr += ']'
+		return repr
 
 class AtariPlayer(RL):
 
@@ -269,6 +280,7 @@ class AtariPlayer(RL):
 		self.episode = 0
 		self.episodeReward = 0.0
 		self.totalReward = 0.0
+		self.terminal = True
 		while True:
 			self.step += 1
 			# epsilon greedy
@@ -289,7 +301,7 @@ class AtariPlayer(RL):
 			if maxEpisode and self.episode >= maxEpisode: break
 		self.endTime = time.time()
 		avgTotalReward = self.totalReward / self.episode if self.episode else 0
-		return {'totalReward':avgTotalReward, 'step_eval':self.step, 'episode_eval':self.episode}
+		return {'total_reward':avgTotalReward, 'step_eval':self.step, 'episode_eval':self.episode}
 
 class AtariRL(RL):
 
@@ -329,7 +341,7 @@ class AtariRL(RL):
 	def eval(self, evalInfo={}):
 		evalInfo = self.evaluator.play(self.evalMaxSteps, self.evalMaxEpisode)
 		RL.eval(self, evalInfo)
-		return evalInfo['totalReward']
+		return evalInfo['total_reward']
 
 
 ##################
