@@ -12,8 +12,7 @@ class Queue:
 		return self.size
 
 	def __getitem__(self, index):
-		if index < 0:
-			index = self.size + index
+		if index < 0: index = self.size + index
 		assert index < self.size, 'index:%d < self.size:%d' % (index, self.size)
 		index = self.head + index
 		if index >= len(self.data):
@@ -82,10 +81,10 @@ class ReplayBuffer:
 	def observation(state, action, reward, terminal, next_state, is_episode_step):
 		return {'state':state, 'action':action, 'reward':reward, 'terminal':terminal, 'next_state':next_state, 'is_episode_step':is_episode_step}
 
-	def append(self, state, action, prev_reward, terminal, is_episode_step):
+	def append(self, state, prev_reward, terminal):
 		if self.curEpisodeLen > 0:
 			self.buffer[-1]['reward'] = prev_reward
-		self.buffer.enqueue(ReplayBuffer.observation(state, action, None, terminal, None, is_episode_step))
+		self.buffer.enqueue(ReplayBuffer.observation(state, None, None, terminal, None, None))
 		if len(self.buffer) >= self.size and len(self.episodeLens) > 0:
 			episodeLen = self.episodeLens[0]
 			self.episodeLens.dequeue()
@@ -94,6 +93,10 @@ class ReplayBuffer:
 		if terminal:
 			self.episodeLens.enqueue(self.curEpisodeLen)
 			self.curEpisodeLen = 0
+
+	def appendAction(self, action, is_episode_step):
+		self.buffer[-1]['action'] = action
+		self.buffer[-1]['is_episode_step'] = is_episode_step
 
 	def __getitem__(self, index):
 		return self.buffer[index]
@@ -143,17 +146,18 @@ class AtariBuffer(ReplayBuffer):
 		self.histLen = int(opt['histLen'])
 		ReplayBuffer.__init__(self, opt)
 
-	def append(self, state, action, prev_reward, terminal, is_episode_step):
+	def append(self, state, prev_reward, terminal):
 		state = state.reshape(-1).copy().astype(np.uint8)
-		ReplayBuffer.append(self, state, action, prev_reward, terminal, is_episode_step)
+		ReplayBuffer.append(self, state, prev_reward, terminal)
 
 	def _getState(self, index):
+		if index < 0: index += len(self.buffer) 
 		shape = list(self.buffer[0]['state'].shape) + [self.histLen]
 		state = np.zeros(shape)
 		for i in range(self.histLen):
 			if index - i < 0: break
-			if i > 0 and self.buffer[index - i]['terminal']: break
-			state[:, i] = self.buffer[index - i]['state'].astype(np.float) / 255.0
+			if self.buffer[index - i]['terminal']: break
+			state[:, self.histLen - i - 1] = self.buffer[index - i]['state'].astype(np.float) / 255.0
 		return state.reshape(-1)
 
 	def __getitem__(self, index):

@@ -47,14 +47,13 @@ class RL():
 		print 'Start training from step %d ...' % self.step
 		while True:
 			self.step += 1
-			# epsilon greedy
+			self.gameEnvStep()
+			if maxSteps and self.step > maxSteps: break
+			if maxEpisode and self.episode > maxEpisode: break
+			# epsilon greedy step
+			self.replayBuffer.append(self.state, self.prev_reward, self.terminal)
 			self.epsilonGreedyStep()
-			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal, self.is_episode_step)
-			self.episodeReward += self.prev_reward
-			if self.terminal: 
-				self.totalReward += self.episodeReward
-				self.episodeReward = 0
-				self.episode += 1
+			self.replayBuffer.appendAction(self.action, self.is_episode_step)
 			# train
 			if self.step > self.learnStart:
 				if self.step % self.trainFreq == 0:
@@ -68,9 +67,6 @@ class RL():
 				score = self.eval()
 				self.save(self.bestScore < score)
 				if self.bestScore < score: self.bestScore = score				
-			# terminate
-			if maxSteps and self.step >= maxSteps: break
-			if maxEpisode and self.episode >= maxEpisode: break
 		self.endTime = time.time()
 
 	def syncTarget(self):
@@ -96,22 +92,29 @@ class RL():
 
 	def epsilonGreedyStep(self):
 		self.is_episode_step = False
+		# epsilon-greedy
+		if np.random.rand() < self.curEpsilon():
+			self.action = np.random.randint(self.outputSize)
+			self.is_episode_step = True
+		else:
+			state = self.replayBuffer[-1]['state'] # contains a number (histLen) of screens
+			q = self.q(state)
+			self.action = np.argmax(q.reshape(-1))
+
+	def gameEnvStep(self, training=True):
 		if self.terminal:
 			if self.randomStarts:
-				self.state, self.prev_reward, self.terminal, _ = self.gameEnv.nextRandomGame(training=True)
+				self.state, self.prev_reward, self.terminal, _ = self.gameEnv.nextRandomGame(training=training)
 			else:
 				self.state, self.prev_reward, self.terminal, _ = self.gameEnv.newGame()
-			self.action = 0
 		else:
-			# epsilon-greedy
-			if np.random.rand() < self.curEpsilon():
-				self.action = np.random.randint(self.outputSize)
-				self.is_episode_step = True
-			else:
-				state = self.replayBuffer[-1]['state'] # contains a number (histLen) of screens
-				q = self.q(state)
-				self.action = np.argmax(q.reshape(-1))
-			self.state, self.prev_reward, self.terminal, _ = self.gameEnv.step(self.action, training=True)
+			self.state, self.prev_reward, self.terminal, _ = self.gameEnv.step(self.action, training=training)
+		# accumulate rewards
+		self.episodeReward += self.prev_reward
+		if self.terminal: 
+			self.totalReward += self.episodeReward
+			self.episodeReward = 0
+			self.episode += 1
 
 	def trainStep(self):
 		batch = self.replayBuffer.sample(self.batchSize)
@@ -240,7 +243,8 @@ class RL():
 		repr += ']'
 		return repr
 
-class AtariPlayer(RL):
+
+class AtariControl(RL):
 
 	@staticmethod
 	def preprocessState(state, imageSize):
@@ -258,23 +262,29 @@ class AtariPlayer(RL):
 
 	def __init__(self, opt, sess, qNetwork):
 		gameEnv = AtariEnv.create(opt) # initialize the game environment
-		AtariPlayer.initOptions(opt, gameEnv)
+		AtariControl.initOptions(opt, gameEnv)
 		self.sess = sess
 		# initialize replay buffer
 		opt = opt.copy()
-		opt['bufSize'] = 1
+		opt['bufSize'] = 1000
 		replayBuffer = AtariBuffer(opt) # small buffer always clean up obsolete spaces
 		# initializer
 		RL.__init__(self, opt, gameEnv, qNetwork, None, None, replayBuffer)
 		# other data
 		self.imageSize = (opt['height'], opt['width'])
-		self.render, self.epsTest = opt['render', 'epsTest']
+		self.epsTest = opt['epsTest']
 		self.randomStarts = None
 
 	def curEpsilon(self):
 		return self.epsTest
 
-	def play(self, maxSteps=None, maxEpisode=None):
+	def getAction(self, state):
+		state = AtariControl.preprocessState(state, self.imageSize)
+		self.replayBuffer.append(state, None, False)
+		self.epsilonGreedyStep()
+		return self.action
+
+	def eval(self, maxSteps=None, maxEpisode=None):
 		assert maxSteps or maxEpisode
 		self.step = 0
 		self.episode = 0
@@ -283,31 +293,23 @@ class AtariPlayer(RL):
 		self.terminal = True
 		while True:
 			self.step += 1
-			# epsilon greedy
-			self.epsilonGreedyStep()
-			self.state = AtariPlayer.preprocessState(self.state, self.imageSize)
-			self.replayBuffer.append(self.state, self.action, self.prev_reward, self.terminal, False)
-			# accumulate rewards
-			self.episodeReward += self.prev_reward
-			if self.terminal:
-				self.totalReward += self.episodeReward
-				self.episodeReward = 0
-				self.episode += 1
-			# render
-			if self.render:
-				self.gameEnv.render()
-			# terminate
+			self.gameEnvStep(training=False)
 			if maxSteps and self.step >= maxSteps: break
 			if maxEpisode and self.episode >= maxEpisode: break
+			# epsilon greedy
+			self.state = AtariControl.preprocessState(self.state, self.imageSize)
+			self.replayBuffer.append(self.state, self.prev_reward, self.terminal)
+			self.epsilonGreedyStep()
 		self.endTime = time.time()
 		avgTotalReward = self.totalReward / self.episode if self.episode else 0
 		return {'total_reward':avgTotalReward, 'step_eval':self.step, 'episode_eval':self.episode}
+
 
 class AtariRL(RL):
 
 	def __init__(self, opt, NetType=Net, BufferType=AtariBuffer):
 		gameEnv = AtariEnv.create(opt) # initialize the game environment
-		AtariPlayer.initOptions(opt, gameEnv)
+		AtariControl.initOptions(opt, gameEnv)
 		self.optimizer = tf.train.RMSPropOptimizer(learning_rate=opt['learningRate'], decay=0.95, epsilon=0.01, centered=True)
 		# initialize session
 		config = tf.ConfigProto()
@@ -316,9 +318,9 @@ class AtariRL(RL):
 		self.sess = tf.Session(config=config)
 		# initialize neural networks
 		with tf.device(opt['device']):
-			qNetwork = NetType(opt, self.sess, name='qNetwork', optimizer=self.optimizer)
+			qNetwork = NetType(opt, self.sess, name='QNetwork', optimizer=self.optimizer)
 			self.sess.run(tf.global_variables_initializer())
-			qTarget = NetType(opt, self.sess, name='qTarget') if opt['targetFreq'] else None
+			qTarget = NetType(opt, self.sess, name='QTarget') if opt['targetFreq'] else None
 		# initialize replay buffer
 		replayBuffer = BufferType(opt)
 		# initializer
@@ -327,19 +329,18 @@ class AtariRL(RL):
 		self.maxReward = opt.get('maxReward', None)
 		self.imageSize = (opt['height'], opt['width'])
 		# evaluator
-		self.evaluator = AtariPlayer(opt, self.sess, self.qNetwork)
+		self.evaluator = AtariControl(opt, self.sess, self.qNetwork)
 		self.evalMaxSteps, self.evalMaxEpisode = opt['evalMaxSteps', 'evalMaxEpisode']
 
-
-	def epsilonGreedyStep(self):
-		RL.epsilonGreedyStep(self)
-		self.state = AtariPlayer.preprocessState(self.state, self.imageSize)
+	def gameEnvStep(self):
+		RL.gameEnvStep(self)
+		self.state = AtariControl.preprocessState(self.state, self.imageSize)
 		if self.maxReward:
 			self.prev_reward = min(self.prev_reward, self.maxReward)
 			self.prev_reward = max(self.prev_reward, -self.maxReward)
 
 	def eval(self, evalInfo={}):
-		evalInfo = self.evaluator.play(self.evalMaxSteps, self.evalMaxEpisode)
+		evalInfo = self.evaluator.eval(self.evalMaxSteps, self.evalMaxEpisode)
 		RL.eval(self, evalInfo)
 		return evalInfo['total_reward']
 

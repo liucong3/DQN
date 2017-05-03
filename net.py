@@ -66,7 +66,7 @@ class Net:
 			lastOp = tf.reshape(lastOp, [-1, int(np.prod(lastOp.get_shape()[1:]))])
 		if linearLayers:
 			for i, outputSize in enumerate(linearLayers):
-				lastOp, W, b = Net.linear(lastOp, outputSize, activation=linear_activation, name='lin'+str(i))
+				lastOp, W, b = Net.linear(lastOp, outputSize, activation=linear_activation, name='linear'+str(i))
 				self.params.append(W)
 				self.params.append(b)
 		self.output = lastOp
@@ -84,7 +84,7 @@ class Net:
 			self.params.append(b)
 			lastOp = duelV + (duelA - tf.reduce_mean(duelA, 1, keep_dims=True))
 		else:
-			lastOp, W, b = Net.linear(lastOp, outputSize, name='actionValue')
+			lastOp, W, b = Net.linear(lastOp, outputSize, name='output')
 			self.params.append(W)
 			self.params.append(b)
 		self.output = lastOp
