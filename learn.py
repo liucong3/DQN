@@ -48,8 +48,8 @@ class RL():
 		while True:
 			self.step += 1
 			self.gameEnvStep()
-			if maxSteps and self.step > maxSteps: break
-			if maxEpisode and self.episode > maxEpisode: break
+			if maxSteps and self.step >= maxSteps: break
+			if maxEpisode and self.episode >= maxEpisode: break
 			# epsilon greedy step
 			self.replayBuffer.append(self.state, self.prev_reward, self.terminal)
 			self.epsilonGreedyStep()
@@ -301,7 +301,7 @@ class AtariControl(RL):
 			self.replayBuffer.append(self.state, self.prev_reward, self.terminal)
 			self.epsilonGreedyStep()
 		self.endTime = time.time()
-		avgTotalReward = self.totalReward / self.episode if self.episode else 0
+		avgTotalReward = float(self.totalReward) / self.episode if self.episode else 0
 		return {'total_reward':avgTotalReward, 'step_eval':self.step, 'episode_eval':self.episode}
 
 

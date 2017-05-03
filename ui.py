@@ -22,26 +22,31 @@ from kivy.uix.image import Image
 
 class AtariUI(App):
 
-	def __init__(self, gameEnv, gameControl, displayEnlarged=3):
+	def __init__(self, gameEnv, gameControl, displayEnlarged=3, bindKeyEvents=True):
 		self.gameEnv = gameEnv
 		self.gameControl = gameControl
 		self.displayEnlarged = displayEnlarged
 		App.__init__(self)
 
 	def build(self):
-		self.updateEvent = Clock.schedule_interval(self.update, 0.1)
 		self.title = opt['env'] + ' ' + str(self.gameEnv.get_action_meanings())
 
-		self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
-		self._keyboard.bind(on_key_down=self._on_keyboard_down)
-		self._keyboard.bind(on_key_up=self._on_keyboard_up)
+		if bindKeyEvents:
+			self._keyboard = Window.request_keyboard(self._keyboard_closed, self)
+			self._keyboard.bind(on_key_down=self._on_keyboard_down)
+			self._keyboard.bind(on_key_up=self._on_keyboard_up)
 		
-		self.observation, _, _, self.lives = self.gameEnv.step(0)
+		self.reset()
 		shape = self.observation.shape
 		self.image = Image(texture=self._get_texture(self.observation))
 		self.y = 0
 		Window.size = (160 * self.displayEnlarged, 210 * self.displayEnlarged)
+		self.updateEvent = Clock.schedule_interval(self.update, 0.1)
 		return self.image
+
+	def reset(self):
+		self.total_reward = 0
+		self.observation, _, _, self.lives = self.gameEnv.newGame()
 
 	def to_window(self, x, y):
 		return (x, y)
@@ -59,22 +64,25 @@ class AtariUI(App):
 	def update(self, dt):
 		prev_lives = self.lives
 		action = self.gameControl.getAction(self.observation)
-		print 'action:', gameEnv.get_action_meanings()[action]
+		# print 'action:', gameEnv.get_action_meanings()[action]
 		self.observation, reward, terminal, self.lives = self.gameEnv.step(action)
-		#print 'self.observation.mean()', self.observation.mean()
+		# print 'self.observation.mean()', self.observation.mean()
 		self.image.texture = self._get_texture(self.observation)
 		info = ''
 		if reward != 0:
 			info += ' reward:' + str(reward)
+			self.total_reward += reward
 		if self.lives != prev_lives:
 			info += ' lives:' + str(prev_lives) + '->' + str(self.lives)
 		if terminal:
 			info += ' terminal'
-		if len(info) > 0:
-			print '*' + info
+		# if len(info) > 0:
+		# 	print '*' + info
 		if terminal:
-			self.updateEvent.cancel()
-			Clock.schedule_once(lambda dt: exit(0), 2)
+			print 'total_reward:', self.total_reward
+			self.reset()
+			# self.updateEvent.cancel()
+			# Clock.schedule_once(lambda dt: exit(0), 2)
 		#print reward, terminal and 'terminal' or ''
 
 	def _get_texture(self, observation):
@@ -206,6 +214,7 @@ if __name__ == '__main__':
 	gameEnv = AtariEnv.create(opt)
 	if not opt.get('savePath', None):
 		gameControl = AtariKeyControl(gameEnv.get_action_meanings())
+		bindKeyEvents = True
 	else:
 		from learn import AtariControl
 		AtariControl.initOptions(opt, gameEnv)
@@ -219,4 +228,5 @@ if __name__ == '__main__':
 		saver = tf.train.Saver(qNetwork.params)
 		saver.restore(sess, path)
 		gameControl = AtariControl(opt, sess, qNetwork)
-	AtariUI(gameEnv, gameControl).run()
+		bindKeyEvents = False
+	AtariUI(gameEnv, gameControl, bindKeyEvents=bindKeyEvents).run()
