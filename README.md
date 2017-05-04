@@ -21,18 +21,23 @@ sudo pip install tensorflow
 sudo apt-get install -y python-numpy python-dev cmake zlib1g-dev libjpeg-dev xvfb libav-tools xorg-dev python-opengl swig
 sudo pip install 'gym[all]'
 ```
-## Run game simulator
+## Play games with UI
 ```bash
-python env.py --env Breakout
-python env.py --env 0
-python env.py --env 48
+python ui.py --env Breakout
+python ui.py --env 0
+python ui.py --env 48
 ```
 ## Train model
 ```bash
 python learn.py --env Breakout
+python learn.py --env Breakout --savePath my_save_path
 python learn.py --env 0
 python learn.py --env 48
 python fast.py --env Breakout
 python fast2.py --env Breakout
+```
+## Game UI with DQN control
+```bash
+python ui.py --env Breakout --savePath my_save_path/model
 ```
 
