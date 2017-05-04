@@ -32,5 +32,7 @@ python env.py --env 48
 python learn.py --env Breakout
 python learn.py --env 0
 python learn.py --env 48
+python fast.py --env Breakout
+python fast2.py --env Breakout
 ```
 
