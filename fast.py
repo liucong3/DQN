@@ -166,10 +166,10 @@ class FastAtariRL(AtariRL):
 		if not self.evalBatchSize: return
 		batch = self.replayBuffer.sample(self.evalBatchSize)
 		if not batch: return
-		state, target, action, L, U = self.qNetwork.__computeTargets(batch)
-		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action, L, U)
+		state, target, action, L, U = self.__computeTargets(batch)
+		deltas, output, grads = self.qNetwork.getDebugInfo(state, target, action, L, U)
 		params = self.qNetwork.getParams()
-		RL.printDebugInfo4(params, deltas, output, grads)
+		RL.printDebugInfo4(params, deltas, output, grads, self.evalBatchSize)
 
 
 

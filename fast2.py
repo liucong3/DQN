@@ -12,8 +12,8 @@ LEARNING TO PLAY IN A FEW HOURS: FAST DEEP REINFORCEMENT LEARNING WITH DYNAMIC L
 
 class FastBuffer(AtariBuffer):
 
-	def append(self, state, action, prev_reward, terminal, is_episode_step):
-		AtariBuffer.append(self, state, action, prev_reward, terminal, is_episode_step)
+	def append(self, state, prev_reward, terminal):
+		AtariBuffer.append(self, state, prev_reward, terminal)
 		if terminal:
 			n = len(self) - 2
 			cumulativeReward = 0

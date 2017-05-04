@@ -200,7 +200,7 @@ class RL():
 		return -1
 
 	@staticmethod
-	def printDebugInfo4(params, deltas, output, grads):
+	def printDebugInfo4(params, deltas, output, grads, batchSize):
 		info = {}
 		info['TD'] = np.abs(deltas).mean()
 		info['deltas mean'] = deltas.mean()
@@ -217,8 +217,8 @@ class RL():
 		norms = []
 		maxs = []
 		for grad in grads:
-			norms.append(np.abs(grad).mean() / self.evalBatchSize)
-			maxs.append(np.abs(grad).max() / self.evalBatchSize)
+			norms.append(np.abs(grad).mean() / batchSize)
+			maxs.append(np.abs(grad).max() / batchSize)
 		info['grads norm'] = RL.debugListRepr(norms)
 		info['grads max'] = RL.debugListRepr(maxs)
 		print 'Debug info:'
@@ -234,7 +234,7 @@ class RL():
 		targets = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
 		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action)
 		params = self.qNetwork.getParams()
-		RL.printDebugInfo4(params, deltas, output, grads)
+		RL.printDebugInfo4(params, deltas, output, grads, self.evalBatchSize)
 
 	@staticmethod
 	def debugListRepr(li):
