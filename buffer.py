@@ -196,11 +196,15 @@ if __name__ == '__main__':
 	opt['histLen'] = 2
 	buffer = AtariBuffer(opt)
 	for i in range(1,3):
-		buffer.append(np.ones([1,1])*255/i, i, i-1, False, True)
-	buffer.append(np.ones([1,1])*255/3, 3, 3-1, True, False)
+		buffer.append(np.ones([1,1])*255/i, i, i-1, False)
+		buffer.appendAction(0, True)
+	buffer.append(np.ones([1,1])*255/3, 3, 3-1, True)
+	buffer.appendAction(0, False)
 	for i in range(4,10):
-		buffer.append(np.ones([1,1])*255/i, i, i-1, False, True)
-	buffer.append(np.ones([1,1])*255/10, 10, 10-1, True, False)
+		buffer.append(np.ones([1,1])*255/i, i, i-1, False)
+		buffer.appendAction(0, True)
+	buffer.append(np.ones([1,1])*255/10, 10, 10-1, True)
+	buffer.appendAction(0, False)
 	print 'len:', len(buffer)
 	for i in range(len(buffer)):
 		print buffer[i]

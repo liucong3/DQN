@@ -120,11 +120,11 @@ class RL():
 		batch = self.replayBuffer.sample(self.batchSize)
 		if batch:
 			#print 'trainStep -- ' + time.ctime()
-			q2Max = self.computTarget(batch)
+			q2Max = self.computeTarget(batch)
 			target = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 
-	def computTarget(self, batch):
+	def computeTarget(self, batch):
 		next_state = batch['next_state']
 		if self.doubleDQN:
 			q2 = self.q(next_state, useTarget=True)
@@ -176,7 +176,7 @@ class RL():
 		self.prevEpisod = self.episode
 		self.prevReportTime = curTime
 		self.prevTotalReward = self.totalReward
-		self.__printDebugInfo()
+		self.printDebugInfo()
 
 	@staticmethod
 	def printInfo(info):
@@ -199,16 +199,8 @@ class RL():
 		self.prevReportTime = curTime
 		return -1
 
-	def __printDebugInfo(self):
-		if not self.evalBatchSize: return
-		batch = self.replayBuffer.sample(self.evalBatchSize)
-		if not batch: return
-		q2Max = self.computTarget(batch)
-		state = batch['state']
-		action = batch['action']
-		targets = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
-		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action)
-		params = self.qNetwork.getParams()
+	@staticmethod
+	def printDebugInfo4(params, deltas, output, grads):
 		info = {}
 		info['TD'] = np.abs(deltas).mean()
 		info['deltas mean'] = deltas.mean()
@@ -231,6 +223,18 @@ class RL():
 		info['grads max'] = RL.debugListRepr(maxs)
 		print 'Debug info:'
 		RL.printInfo(info)
+
+	def printDebugInfo(self):
+		if not self.evalBatchSize: return
+		batch = self.replayBuffer.sample(self.evalBatchSize)
+		if not batch: return
+		q2Max = self.computeTarget(batch)
+		state = batch['state']
+		action = batch['action']
+		targets = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
+		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action)
+		params = self.qNetwork.getParams()
+		RL.printDebugInfo4(params, deltas, output, grads)
 
 	@staticmethod
 	def debugListRepr(li):
@@ -354,7 +358,8 @@ if __name__ == '__main__':
 	opt = Option('config.json')
 	AtariEnv.create(opt)
 	env = opt['env']
-	opt['savePath'] = 'save_' + env
+	if not opt.get('savePath', None):
+		opt['savePath'] = 'save_' + env
 	# net
 	trainer = AtariRL(opt)
 	if os.path.exists(opt['savePath']):

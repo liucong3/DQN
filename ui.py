@@ -221,9 +221,9 @@ if __name__ == '__main__':
 		import tensorflow as tf
 		sess = tf.Session()
 		from net import Net
-		#qNetwork = Net(opt, sess, name='QNetwork')
-		from netComm import buildNet
-		qNetwork = buildNet(opt, gameEnv, sess)
+		qNetwork = Net(opt, sess, name='QNetwork')
+		# from netComm import buildNet
+		# qNetwork = buildNet(opt, gameEnv, sess)
 		path = opt['savePath'] # save/agent-best
 		saver = tf.train.Saver(qNetwork.params)
 		saver.restore(sess, path)
