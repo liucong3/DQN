@@ -110,7 +110,7 @@ class Net:
 		if clipDelta:
 			deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
 			#loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(self.deltas) - tf.abs(deltasCliped)) * clipDelta)
-			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (self.deltas - deltasCliped) * clipDelta)
+			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (self.deltas - deltasCliped) * deltasCliped)
 		else:
 			loss = tf.reduce_sum(tf.square(self.deltas) / 2)
 		return loss
