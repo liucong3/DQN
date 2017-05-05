@@ -101,10 +101,10 @@ class AuxNet(Net):
 		# loss 2
 		linearLayers = self.opt.get('linearLayers', None)
 		output2, W2, b2 = Net.linear(self.stateAbstract, linearLayers[-1], activation=tf.nn.relu, name='output2')
-		goal = tf.placeholder(tf.float32, [None, linearLayers[-1]], name='goal')
+		self.goal = tf.placeholder(tf.float32, [None, linearLayers[-1]], name='goal')
 		self.params.append(W2)
 		self.params.append(b2)
-		loss2 = tf.losses.mean_squared_error(goal, output2, scope='loss2')
+		loss2 = tf.losses.mean_squared_error(self.goal, output2, scope='loss2')
 		# loss 3
 		gru_forward, weightRZ, biasRZ, weightU, biasU = AuxNet.createGRU(outputSize, linearLayers[-1])
 		self.params.append(weightRZ)
@@ -161,13 +161,13 @@ class AuxNet(Net):
 		 
 
 	def trainStep(self, input_, targets, action, goal, goal_actions):
-		feed_dict = {self.input:input_, self.targets:targets, self.action:action}
+		feed_dict = {self.input:input_, self.targets:targets, self.action:action, self.goal:goal}
 		for i in range(self.actionPredictions):
 			feed_dict[self.goal_actions[i]] = goal_actions[i]
 		self.sess.run(self.applyGrads, feed_dict=feed_dict)
 
 	def getDebugInfo(self, input_, targets, action, goal, goal_actions):
-		feed_dict = {self.input:input_, self.targets:targets, self.action:action}
+		feed_dict = {self.input:input_, self.targets:targets, self.action:action, self.goal:goal}
 		for i in range(self.actionPredictions):
 			feed_dict[self.goal_actions[i]] = goal_actions[i]
 		return self.sess.run((self.deltas, self.output, self.grads), feed_dict=feed_dict)
