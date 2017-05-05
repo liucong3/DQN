@@ -39,7 +39,12 @@
 	"epsTest" : 0.05,
 	"evalMaxEpisode" : 30,
 	"evalMaxSteps" : 125000,
+	"evalBatchSize" : 1000,
 
+	// fast.py
 	"penaltyForBounds" : 4.0,
-	"boundSteps" : 4
+	"boundSteps" : 4,
+
+	// aux1.py
+	"actionPredictions" : 10
 }

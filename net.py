@@ -69,12 +69,12 @@ class Net:
 				lastOp, W, b = Net.linear(lastOp, outputSize, activation=linear_activation, name='linear'+str(i))
 				self.params.append(W)
 				self.params.append(b)
-		self.output = lastOp
+		self.stateAbstract = lastOp
 
 	def buildOutputModule(self):
 		outputSize = self.opt['outputSize']
 		dueling = self.opt.get('dueling', None)
-		lastOp = self.output
+		lastOp = self.stateAbstract
 		if dueling:
 			duelA, W, b = Net.linear(lastOp, outputSize, name='duelA')
 			self.params.append(W)
@@ -109,7 +109,8 @@ class Net:
 		self.deltas = self.targets - q
 		if clipDelta:
 			deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
-			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(self.deltas) - tf.abs(deltasCliped)) * clipDelta)
+			#loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(self.deltas) - tf.abs(deltasCliped)) * clipDelta)
+			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (self.deltas - deltasCliped) * clipDelta)
 		else:
 			loss = tf.reduce_sum(tf.square(self.deltas) / 2)
 		return loss

@@ -7,82 +7,78 @@ from learn import RL, AtariRL
 from buffer import ReplayBuffer, AtariBuffer
 
 '''
-LEARNING TO PLAY IN A DAY: FASTER DEEP REINFORCEMENT LEARNING BY OPTIMALITY TIGHTENING
+reinforcement learning with iterative predictive auxiliary tasks  
 '''
 
-class FastBuffer(AtariBuffer):
+class AuxBuffer(AtariBuffer):
 
 	'''
-	Sample K (boundSteps) states before and after each randomly selected state in order to calcuate the 
-	upper and lower bound for the selected state.
+	Sample K actions.
 	'''
 	def __init__(self, opt):
-		self.boundSteps = opt['boundSteps']
+		self.actionPredictions = opt['actionPredictions']
 		AtariBuffer.__init__(self, opt)
 
 	def append(self, state, prev_reward, terminal):
 		AtariBuffer.append(self, state, prev_reward, terminal)
 		if terminal:
 			n = len(self) - 2
-			cumulativeReward = 0
+			curGoal = n
 			while (n >= 0):
 				o = self.buffer[n]
 				if o['terminal']: break;
-				cumulativeReward = o['reward'] + self.discount * cumulativeReward
-				o['reward'] = cumulativeReward
+				o['goal_distance'] = curGoal - n
+				if o['reward'] > 0:
+					curGoal = n
 				n -= 1
+
 
 	def sample(self, n):
 		size = len(self.buffer) - self.curEpisodeLen
 		# return None if nothing to sample
 		all_terminal = True
 		for i in xrange(size - 1):
-			if not self.buffer[i]['terminal']:
+			if not self[i]['terminal']:
 				all_terminal = False
 				break
 		if all_terminal: return None
 		# sample
 		batch = ReplayBuffer.observation([],[],[],[],[],[])
 		batch['discount'] = []
+		batch['goal'] = []
+		batch['actions_to_goal'] = []
 		while n > 0:
 			k = np.random.randint(size - 1)
 			o = self[k]
 			if not o['terminal']:
 				n -= 1
 				batch['state'].append(o['state'])
+				batch['reward'].append(o['reward'])
 				batch['action'].append(o['action'])
-				valid = True
-				for i in range(self.boundSteps):
-					valid = valid and (k - i - 1 > 0)
-					if valid:
-						o2 = self[k - 1 - i]
-						valid =  not o2['terminal']
-					batch['terminal'].append(valid)
-					# thing appended is meaningless is the state is invalid
-					batch['next_state'].append(o2['state'] if valid else o['state'])	
-					batch['reward'].append(o2['reward'] - o['reward'] if valid else 0)
-					batch['discount'].append(self.discount)
-				valid = not self[k]['terminal']
-				for i in range(self.boundSteps):
-					valid = valid and (k + i + 1 < len(self)) 
-					if valid:
-						o2 = self[k + i + 1]
-						valid =  not o2['terminal']
-					batch['terminal'].append(valid)
-					# thing appended is meaningless is the state is invalid
-					batch['next_state'].append(o2['state'] if valid else o['state'])	
-					batch['reward'].append(o['reward'] - self[k + i + 1]['reward'] if valid else 0) 
-					batch['discount'].append(self.discount)
+				batch['discount'].append(self.discount)
+				o2 = self[k + 1]
+				batch['terminal'].append(o2['terminal'])
+				batch['next_state'].append(o2['state'])
+				# added
+				o_goal = self[k + o['goal_distance']]
+				batch['goal'].append(o_goal['state'])
+				actions_to_goal = [0] * self.actionPredictions
+				for i in range(min(o['goal_distance'], self.actionPredictions)):
+					actions_to_goal[i] = self.buffer[k + i]['action']
+				batch['actions_to_goal'].append(actions_to_goal)
 		# format data
 		batch['state'] = np.array(batch['state'])
 		batch['reward'] = np.array(batch['reward']).astype(np.float)
 		batch['discount'] = np.array(batch['discount']).astype(np.float)
 		batch['terminal'] = np.array(batch['terminal']).astype(np.float)
 		batch['next_state'] = np.array(batch['next_state'])
+		batch['goal'] = np.array(batch['goal'])
+		batch['actions_to_goal'] = np.array(batch['actions_to_goal'])
 		return batch
 
 
-class FastNet(Net):
+
+class AuxNet(Net):
 
 	def __init__(self, opt, sess=None, name='net', optimizer=None):
 		self.penaltyForBounds = opt['penaltyForBounds']
@@ -93,25 +89,15 @@ class FastNet(Net):
 		clipDelta = self.opt.get('clipDelta', None)
 		self.targets = tf.placeholder(tf.float32, [None], name='targets')
 		self.action = tf.placeholder(tf.int32, [None], name='action')
-		self.L = tf.placeholder(tf.float32, [None], name='L') # lower bound
-		self.U = tf.placeholder(tf.float32, [None], name='U') # upper bound
 		actionOneHot = tf.one_hot(self.action, outputSize, 1.0, 0.0)
-		q_sa = tf.reduce_sum(self.output * actionOneHot, 1)
-		deltasQ = self.targets - q_sa
-		deltasL = tf.nn.relu(self.L - q_sa)
-		deltasU = tf.nn.relu(q_sa - self.U)
-		self.deltas = deltasQ + deltasL + deltasU
+		q = tf.reduce_sum(self.output * actionOneHot, 1)
+		self.deltas = self.targets - q
 		if clipDelta:
 			deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
-			deltasRatio = (deltasCliped / self.deltas)
-			deltasQCliped = deltasQ * deltasRatio
-			deltasLCliped = deltasL * deltasRatio
-			deltasUCliped = deltasU * deltasRatio
-			loss = tf.reduce_sum(tf.square(deltasQCliped) / 2 +  (deltasQ - deltasQCliped) * deltasQCliped + \
-								tf.square(deltasQCliped) / 2 +  (deltasQ - deltasQCliped) * deltasQCliped + \
-								tf.square(deltasUCliped) / 2 +  (deltasU - deltasUCliped) * deltasUCliped)
+			#loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (tf.abs(self.deltas) - tf.abs(deltasCliped)) * clipDelta)
+			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (self.deltas - deltasCliped) * clipDelta)
 		else:
-			loss = tf.reduce_sum(tf.square(self.deltas) / 2 + self.penaltyForBounds / 2 * (tf.square(deltasL) + tf.square(deltasU))) 
+			loss = tf.reduce_sum(tf.square(self.deltas) / 2)
 		return loss
 
 	def trainStep(self, input_, targets, action, L, U):
@@ -123,11 +109,11 @@ class FastNet(Net):
 		return self.sess.run((self.deltas, self.output, self.grads), feed_dict=feed_dict)
 
 
-class FastAtariRL(AtariRL):
+class AuxAtariRL(AtariRL):
 
 	def __init__(self, opt):
 		self.boundSteps = opt['boundSteps']
-		AtariRL.__init__(self, opt, NetType=FastNet, BufferType=FastBuffer)
+		AtariRL.__init__(self, opt, NetType=AuxNet, BufferType=AuxBuffer)
 
 	def __computeTargets(self, batch):
 		valid = batch['terminal']
@@ -199,7 +185,7 @@ if __name__ == '__main__':
 	if not opt.get('savePath', None):
 		opt['savePath'] = 'save_' + env
 	# net
-	trainer = FastAtariRL(opt)
+	trainer = AuxAtariRL(opt)
 	if os.path.exists(opt['savePath']):
 		trainer.load()
 	else:
