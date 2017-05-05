@@ -8,7 +8,7 @@
 	"maxReward" : 1,
 	"clipDelta" : 1,
 
-	"bufSize" : 1e6,
+	"bufSize" : 2e5,
 	"histLen" : 4,
 	"height" : 84,
 	"width" : 84,
@@ -41,10 +41,9 @@
 	"evalMaxSteps" : 125000,
 	"evalBatchSize" : 1000,
 
-	// fast.py
 	"penaltyForBounds" : 4.0,
 	"boundSteps" : 4,
 
-	// aux1.py
-	"actionPredictions" : 10
+	"actionPredictions" : 10,
+	"auxiliaryTaskWeights" : 0.01
 }

@@ -49,7 +49,7 @@ class AtariEnv:
 			'Zaxxon',
 			'Road_Runner',
 			'Assault',
-			'Wizard_of_Wor', # This game have problem: screen constantly flicker
+			#'Wizard_of_Wor', # This game have problem: screen constantly flicker
 			'Tutankham',
 			'Bank_Heist',
 			'Kung_Fu_Master',
@@ -65,9 +65,9 @@ class AtariEnv:
 			'Pong',
 			'Name_This_Game',
 			'Montezuma_Revenge',
-			'HERO', # An error occurs: could not initialize the game environment
+			#'HERO', # An error occurs: could not initialize the game environment
 			'Crazy_Climber',
-			'Asteroids', # display problem: black screen
+			#'Asteroids', # display problem: black screen
 			'Private_Eye',
 			'Riverraid',
 			'Ms_Pacman',

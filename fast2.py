@@ -99,7 +99,8 @@ if __name__ == '__main__':
 	from env import AtariEnv
 	AtariEnv.create(opt)
 	env = opt['env']
-	opt['savePath'] = 'save_' + env
+	if opt['savePath'] is None:
+		opt['savePath'] = 'save_' + env
 	# net
 	trainer = AtariRL(opt, BufferType=FastBuffer)
 	if os.path.exists(opt['savePath']):

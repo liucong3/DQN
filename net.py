@@ -32,7 +32,7 @@ class Net:
 
 	def setParams(self, params):
 		feed_dict = {}
-		for i in range(len(params)):
+		for i in range(len(self.newParams)):
 			feed_dict[self.newParams[i]] = params[i]
 		self.sess.run(self.assignOps, feed_dict=feed_dict)
 

@@ -27,6 +27,16 @@ class Option:
 		(options, args) = parser.parse_args(sys.argv[1:])
 		for key, value in options.__dict__.iteritems():
 			self.options[key] = value
+			if value is None: continue
+			if not isinstance(value, str): continue
+			try:
+				self.options[key] = int(value)
+			except ValueError:
+				try:
+					self.options[key] = float(value)
+				except ValueError:
+					if value == 'True' or value == 'true': self.options[key] = True
+					if value == 'False' or value == 'false': self.options[key] = False
 
 	def _shortKeys(self, keys):
 		'''
@@ -144,10 +154,10 @@ class Option:
 
 if __name__ == '__main__':
 	opt = Option('config.json')
-	print opt['device']
-	print opt['device', 'learningRate']
-	opt['device'] = 'ABC'
-	opt['device', 'learningRate'] = 'ABC', 123
+	# print opt['device']
+	# print opt['device', 'learningRate']
+	# opt['device'] = 'ABC'
+	# opt['device', 'learningRate'] = 'ABC', 123
 	print opt
 	#opt.save('1.txt')
 
