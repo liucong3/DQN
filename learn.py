@@ -33,7 +33,7 @@ class RL():
 		self.step = self.episode = 0
 		self.totalReward = self.episodeReward = self.prevTotalReward= 0.0
 		self.startTime = time.time()
-		self.prevReportTime = self.prevStep = 0
+		self.prevReportTime = self.prevStep = self.prevEpisode = 0
 		# eval
 		self.evalInfo = []
 		self.bestScore = -1
@@ -165,16 +165,15 @@ class RL():
 	def report(self):
 		print time.ctime()
 		curTime = time.time()
-		episode = self.episode - self.prevEpisod
+		episode = self.episode - self.prevEpisode
 		if episode > 0: # to prevent dividing by zero episode
 			step = self.step - self.prevStep
-			episode = self.episode - self.prevEpisod
 			time1 = RL.duration(curTime - self.prevReportTime)
 			time2 = RL.duration(curTime - self.startTime)
 			totalReward = self.totalReward - self.prevTotalReward
 			print 'S:%d E:%d T|%s, s:%d e:%d t|%s, s/e:%.2f r/e:%.2f' % (self.step, self.episode, time2, step, episode, time1, (step / episode), (totalReward / episode))
 		self.prevStep = self.step
-		self.prevEpisod = self.episode
+		self.prevEpisode = self.episode
 		self.prevReportTime = curTime
 		self.prevTotalReward = self.totalReward
 		self.printDebugInfo()

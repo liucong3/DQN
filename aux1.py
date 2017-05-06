@@ -7,7 +7,7 @@ from learn import RL, AtariRL
 from buffer import ReplayBuffer, AtariBuffer
 
 '''
-reinforcement learning with iterative predictive auxiliary tasks  
+reinforcement learning with auxiliary planing
 '''
 
 class AuxBuffer(AtariBuffer):
@@ -63,8 +63,11 @@ class AuxBuffer(AtariBuffer):
 				# added
 				o_goal = self[k + o['goal_distance']]
 				batch['goal'].append(o_goal['state'])
+				valid = True
 				for i in range(self.actionPredictions):
-					if i >= o['goal_distance']: batch['goal_action' + str(i)].append(-1)
+					if not valid or i >= o['goal_distance'] or o['is_episode_step']:
+						valid = False
+						batch['goal_action' + str(i)].append(-1)
 					else: batch['goal_action' + str(i)].append(self.buffer[k + i]['action'])
 		# format data
 		batch['state'] = np.array(batch['state'])
@@ -115,18 +118,19 @@ class AuxNet(Net):
 		self.params.append(shared_linear_W)
 		self.params.append(shared_linear_b)
 
+		self.goal_actions = []
+		for i in range(self.actionPredictions):
+			self.goal_actions.append(tf.placeholder(tf.float32, [None, outputSize], name='goal_action' + str(i)))
 		x = tf.constant(0.0, shape=[self.batchSize, outputSize])
 		h = self.stateAbstract
 		output3 = []
 		for i in range(self.actionPredictions):
 			h = gru_forward(x, h)
 			output3.append(shared_linear_forward(h))
-			x = tf.nn.softmax(output3[-1])
+			#x = tf.nn.softmax(output3[-1])
+			x = self.goal_actions[i]
 
-		self.goal_actions = []
 		loss3 = 0
-		for i in range(self.actionPredictions):
-			self.goal_actions.append(tf.placeholder(tf.float32, [None, outputSize], name='goal_action' + str(i)))
 		for i in range(self.actionPredictions):
 			loss3 += tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=self.goal_actions[i], logits=output3[i]))
 

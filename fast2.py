@@ -73,7 +73,7 @@ class FastNet(Net):
 
 	def __init__(self, opt, sess=None, name='net', optimizer=None):
 		self.qDecay = opt['qDecay']
-		Net.__init__(self, opt, sess=sess, name=name, optimizer=optimizer):
+		Net.__init__(self, opt, sess=sess, name=name, optimizer=optimizer)
 
 	def buildLoss(self):
 		outputSize = self.opt['outputSize']

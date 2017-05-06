@@ -1,5 +1,5 @@
 {
-    "device" : "/cpu:0",
+    "device" : "/gpu:0",
     "env" : null,
 	"learningRate" : 0.00025,
 
@@ -47,5 +47,5 @@
 	"actionPredictions" : 10,
 	"auxiliaryTaskWeights" : 0.01,
 
-	"qDecay" : 1e-4
+	"qDecay" : 1e-3
 }
