@@ -165,7 +165,8 @@ class RL():
 	def report(self):
 		print time.ctime()
 		curTime = time.time()
-		if self.episode and self.prevStep: # to prevent dividing by zero episode
+		episode = self.episode - self.prevEpisod
+		if episode > 0: # to prevent dividing by zero episode
 			step = self.step - self.prevStep
 			episode = self.episode - self.prevEpisod
 			time1 = RL.duration(curTime - self.prevReportTime)
