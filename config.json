@@ -45,5 +45,7 @@
 	"boundSteps" : 4,
 
 	"actionPredictions" : 10,
-	"auxiliaryTaskWeights" : 0.01
+	"auxiliaryTaskWeights" : 0.01,
+
+	"qDecay" : 1e-4
 }

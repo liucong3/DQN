@@ -80,7 +80,6 @@ class AuxBuffer(AtariBuffer):
 class AuxNet(Net):
 
 	def __init__(self, opt, sess=None, name='net', optimizer=None):
-		self.penaltyForBounds = opt['penaltyForBounds']
 		self.auxiliaryTaskWeights = opt['auxiliaryTaskWeights']
 		self.actionPredictions = opt['actionPredictions']
 		self.batchSize = opt['batchSize']

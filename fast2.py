@@ -7,7 +7,10 @@ from learn import RL, AtariRL
 from buffer import ReplayBuffer, AtariBuffer
 
 '''
-LEARNING TO PLAY IN A FEW HOURS: FAST DEEP REINFORCEMENT LEARNING WITH DYNAMIC LEARNING STEPS
+1. use n-step, n is as large as possible, constrained by that the n-step span of the experience 
+	contains only greedy step, no exploration step is allowed.
+2. Make the replay buffer smaller to allow more training to run in parallel, 
+	decay the Q values of the states that are no seen for a long time.
 '''
 
 class FastBuffer(AtariBuffer):
@@ -66,6 +69,26 @@ class FastBuffer(AtariBuffer):
 		batch['next_state'] = np.array(batch['next_state'])
 		return batch
 
+class FastNet(Net):
+
+	def __init__(self, opt, sess=None, name='net', optimizer=None):
+		self.qDecay = opt['qDecay']
+		Net.__init__(self, opt, sess=sess, name=name, optimizer=optimizer):
+
+	def buildLoss(self):
+		outputSize = self.opt['outputSize']
+		clipDelta = self.opt.get('clipDelta', None)
+		self.targets = tf.placeholder(tf.float32, [None], name='targets')
+		self.action = tf.placeholder(tf.int32, [None], name='action')
+		actionOneHot = tf.one_hot(self.action, outputSize, 1.0, 0.0)
+		target = tf.tile(tf.reshape(self.targets, [-1,1]), [1, outputSize])
+		self.deltas = (self.output - target) * actionOneHot + self.output * self.qDecay
+		if clipDelta:
+			deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
+			loss = tf.reduce_sum(tf.square(deltasCliped) / 2 + (self.deltas - deltasCliped) * deltasCliped)
+		else:
+			loss = tf.reduce_sum(tf.square(self.deltas) / 2)
+		return loss
 
 if __name__ == '__main__':
 	'''
@@ -93,6 +116,7 @@ if __name__ == '__main__':
 	print buf.sample(3)
 
 	'''
+
 	from option import Option
 	import numpy as np
 	opt = Option('config.json')
@@ -102,7 +126,7 @@ if __name__ == '__main__':
 	if opt['savePath'] is None:
 		opt['savePath'] = 'save_' + env
 	# net
-	trainer = AtariRL(opt, BufferType=FastBuffer)
+	trainer = AtariRL(opt, NetType=FastNet, BufferType=FastBuffer)
 	if os.path.exists(opt['savePath']):
 		trainer.load()
 	else:
