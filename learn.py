@@ -38,6 +38,7 @@ class RL():
 		self.evalInfo = []
 		self.bestScore = -1
 		self.evalBatchSize = opt.get('evalBatchSize', None)
+		self.debug = opt['debug']
 
 
 	def train(self, maxSteps=None, maxEpisode=None):
@@ -171,7 +172,9 @@ class RL():
 			time1 = RL.duration(curTime - self.prevReportTime)
 			time2 = RL.duration(curTime - self.startTime)
 			totalReward = self.totalReward - self.prevTotalReward
-			print 'S:%d E:%d T|%s, s:%d e:%d t|%s, s/e:%.2f r/e:%.2f' % (self.step, self.episode, time2, step, episode, time1, (step / episode), (totalReward / episode))
+			bufferSize = len(self.replayBuffer)
+			episodeSize = len(self.replayBuffer.episodeLens)
+			print 'S:%d E:%d T|%s, s:%d e:%d t|%s, s/e:%.2f r/e:%.2f B:%d/%d' % (self.step, self.episode, time2, step, episode, time1, (step / episode), (totalReward / episode), bufferSize, episodeSize)
 		self.prevStep = self.step
 		self.prevEpisode = self.episode
 		self.prevReportTime = curTime
@@ -200,32 +203,33 @@ class RL():
 		return -1
 
 	@staticmethod
-	def printDebugInfo4(params, deltas, output, grads, batchSize):
+	def printDebugInfo4(debug, params, deltas, output, grads, batchSize):
 		info = {}
 		info['TD'] = np.abs(deltas).mean()
 		info['deltas mean'] = deltas.mean()
 		info['deltas std'] = deltas.std()
 		info['Q mean'] = output.mean()
 		info['Q std'] = output.std()
-		norms = []
-		maxs = []
-		for param in params:
-			norms.append(np.abs(param).mean())
-			maxs.append(np.abs(param).max())
-		info['param norm'] = RL.debugListRepr(norms)
-		info['param max'] = RL.debugListRepr(maxs)
-		norms = []
-		maxs = []
-		for grad in grads:
-			norms.append(np.abs(grad).mean() / batchSize)
-			maxs.append(np.abs(grad).max() / batchSize)
-		info['grads norm'] = RL.debugListRepr(norms)
-		info['grads max'] = RL.debugListRepr(maxs)
+		if debug > 1:
+			norms = []
+			maxs = []
+			for param in params:
+				norms.append(np.abs(param).mean())
+				maxs.append(np.abs(param).max())
+			info['param norm'] = RL.debugListRepr(norms)
+			info['param max'] = RL.debugListRepr(maxs)
+			norms = []
+			maxs = []
+			for grad in grads:
+				norms.append(np.abs(grad).mean() / batchSize)
+				maxs.append(np.abs(grad).max() / batchSize)
+			info['grads norm'] = RL.debugListRepr(norms)
+			info['grads max'] = RL.debugListRepr(maxs)
 		print 'Debug info:'
 		RL.printInfo(info)
 
 	def printDebugInfo(self):
-		if not self.evalBatchSize: return
+		if not self.debug or not self.evalBatchSize: return
 		batch = self.replayBuffer.sample(self.evalBatchSize)
 		if not batch: return
 		q2Max = self.computeTarget(batch)
@@ -233,8 +237,8 @@ class RL():
 		action = batch['action']
 		targets = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
 		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action)
-		params = self.qNetwork.getParams()
-		RL.printDebugInfo4(params, deltas, output, grads, self.evalBatchSize)
+		params = self.qNetwork.getParams() if self.debug > 1 else None
+		RL.printDebugInfo4(self.debug, params, deltas, output, grads, self.evalBatchSize)
 
 	@staticmethod
 	def debugListRepr(li):

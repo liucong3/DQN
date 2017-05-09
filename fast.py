@@ -8,6 +8,7 @@ from buffer import ReplayBuffer, AtariBuffer
 
 '''
 LEARNING TO PLAY IN A DAY: FASTER DEEP REINFORCEMENT LEARNING BY OPTIMALITY TIGHTENING
+This implementation has bugs to fix
 '''
 
 class FastBuffer(AtariBuffer):
@@ -63,7 +64,7 @@ class FastBuffer(AtariBuffer):
 					batch['reward'].append(o2['reward'] - o['reward'] if valid else 0)
 					batch['discount'].append(self.discount)
 				valid = not self[k]['terminal']
-				for i in range(self.boundSteps):
+				for i in range(self.boundSteps + 1):
 					valid = valid and (k + i + 1 < len(self)) 
 					if valid:
 						o2 = self[k + i + 1]
@@ -71,7 +72,7 @@ class FastBuffer(AtariBuffer):
 					batch['terminal'].append(valid)
 					# thing appended is meaningless is the state is invalid
 					batch['next_state'].append(o2['state'] if valid else o['state'])	
-					batch['reward'].append(o['reward'] - self[k + i + 1]['reward'] if valid else 0) 
+					batch['reward'].append(o['reward'] - o2['reward'] if valid else 0) 
 					batch['discount'].append(self.discount)
 		# format data
 		batch['state'] = np.array(batch['state'])
@@ -91,27 +92,28 @@ class FastNet(Net):
 	def buildLoss(self):
 		outputSize = self.opt['outputSize']
 		clipDelta = self.opt.get('clipDelta', None)
-		self.targets = tf.placeholder(tf.float32, [None], name='targets')
+		self.targets = tf.placeholder(tf.float, [None], name='targets')
 		self.action = tf.placeholder(tf.int32, [None], name='action')
-		self.L = tf.placeholder(tf.float32, [None], name='L') # lower bound
-		self.U = tf.placeholder(tf.float32, [None], name='U') # upper bound
+		self.L = tf.placeholder(tf.float, [None], name='L') # lower bound
+		self.U = tf.placeholder(tf.float, [None], name='U') # upper bound
 		actionOneHot = tf.one_hot(self.action, outputSize, 1.0, 0.0)
 		q_sa = tf.reduce_sum(self.output * actionOneHot, 1)
 		deltasQ = self.targets - q_sa
 		deltasL = tf.nn.relu(self.L - q_sa)
 		deltasU = tf.nn.relu(q_sa - self.U)
 		self.deltas = deltasQ + deltasL + deltasU
-		if clipDelta:
-			deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
-			deltasRatio = (deltasCliped / self.deltas)
-			deltasQCliped = deltasQ * deltasRatio
-			deltasLCliped = deltasL * deltasRatio
-			deltasUCliped = deltasU * deltasRatio
-			loss = tf.reduce_sum(tf.square(deltasQCliped) / 2 +  (deltasQ - deltasQCliped) * deltasQCliped + \
-								tf.square(deltasQCliped) / 2 +  (deltasQ - deltasQCliped) * deltasQCliped + \
-								tf.square(deltasUCliped) / 2 +  (deltasU - deltasUCliped) * deltasUCliped)
-		else:
-			loss = tf.reduce_sum(tf.square(self.deltas) / 2 + self.penaltyForBounds / 2 * (tf.square(deltasL) + tf.square(deltasU))) 
+		# if clipDelta:
+		# 	deltasCliped = tf.clip_by_value(self.deltas, -clipDelta, clipDelta)
+		# 	deltasRatio = (deltasCliped / self.deltas)
+		# 	deltasQCliped = deltasQ * deltasRatio
+		# 	deltasLCliped = deltasL * deltasRatio
+		# 	deltasUCliped = deltasU * deltasRatio
+		# 	loss = tf.reduce_sum(tf.square(deltasQCliped) / 2 +  (deltasQ - deltasQCliped) * deltasQCliped + \
+		# 						tf.square(deltasQCliped) / 2 +  (deltasQ - deltasQCliped) * deltasQCliped + \
+		# 						tf.square(deltasUCliped) / 2 +  (deltasU - deltasUCliped) * deltasUCliped)
+		# else:
+		# 	loss = tf.reduce_sum(tf.square(self.deltas) / 2 + self.penaltyForBounds / 2 * (tf.square(deltasL) + tf.square(deltasU))) 
+		loss = tf.reduce_sum(tf.square(self.deltas) / 2 + self.penaltyForBounds / 2 * (tf.square(deltasL) + tf.square(deltasU))) 
 		return loss
 
 	def trainStep(self, input_, targets, action, L, U):
@@ -133,12 +135,12 @@ class FastAtariRL(AtariRL):
 		valid = batch['terminal']
 		valid = valid.reshape([-1, 2 * self.boundSteps])
 		validU = valid[:,:self.boundSteps]
-		validL = valid[:,self.boundSteps:]
+		validL = valid[:,self.boundSteps+1:]
 
 		q2Max = self.computeTarget(batch)
 		q2Max = q2Max.reshape([-1, 2 * self.boundSteps])
 		U = q2Max[:,:self.boundSteps]
-		L = q2Max[:,self.boundSteps:]
+		L = q2Max[:,self.boundSteps+1:]
 		discount = self.discount
 		for i in range(self.boundSteps):
 			L[:,i] *= discount
@@ -176,7 +178,7 @@ class FastAtariRL(AtariRL):
 		state, target, action, L, U = self.__computeTargets(batch)
 		deltas, output, grads = self.qNetwork.getDebugInfo(state, target, action, L, U)
 		params = self.qNetwork.getParams()
-		RL.printDebugInfo4(params, deltas, output, grads, self.evalBatchSize)
+		RL.printDebugInfo4(self.debug, params, deltas, output, grads, self.evalBatchSize)
 
 
 
@@ -205,5 +207,3 @@ if __name__ == '__main__':
 	else:
 		os.makedirs(opt['savePath'])
 	trainer.train(opt['trainSteps'])
-
-
