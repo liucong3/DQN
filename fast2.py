@@ -4,7 +4,7 @@ import tensorflow as tf
 import numpy as np
 from net import Net
 from learn import RL, AtariRL
-from buffer import ReplayBuffer, AtariBuffer
+from buffer import Queue, ReplayBuffer, AtariBuffer
 
 '''
 1. use n-step, n is as large as possible, constrained by that the n-step span of the experience 
@@ -15,28 +15,71 @@ from buffer import ReplayBuffer, AtariBuffer
 	decay the Q values of the states that are no seen for a long time.
 '''
 
+class EssentialBuffer:
+
+	def __init__(self):
+		self.buffer = Queue()
+
+	def add(self, item):
+		self.buffer.append(item)
+
+	def removeAt(self, indexes):
+		if isinstance(indexes, (list, tuple)):
+			indexes.sort(reverse=True)
+			for index in indexes:
+				self.removeAt(index)
+		else:
+			self[indexes] = self[-1]
+			self.dequeue(-1)
+
+	def __len__(self):
+		return len(self.buffer)
+
+
 class FastBuffer(AtariBuffer):
 
 	def __init__(self, opt):
 		self.greedy_n_step = opt['greedy_n_step']
+		self.essential = EssentialBuffer() if opt['essential'] else None
 		AtariBuffer.__init__(self, opt)
 
+	def _add_items_into_essential_buffer(self):
+		episodeLen = self.episodeInfo[0]['episodeLen']
+		for i in xrange(episodeLen - 1):
+			o = self[i]
+			assert not o['terminal']
+			if o['is_episode_step']:
+				eo = {}
+				eo['state'] = o['state']
+				eo['reward'] = o['reward']
+				eo['action'] = o['action']
+				o2 = self[i + 1]
+				eo['terminal'] = o2['terminal']
+				eo['next_state'] = o2['state']
+
+
 	def append(self, state, prev_reward, terminal):
+		if not self.essential is None:
+			if len(self.buffer) >= self.size - 1 and len(self.episodeInfo) > 0:
+				self._add_items_into_essential_buffer()
 		AtariBuffer.append(self, state, prev_reward, terminal)
 		if terminal:
 			n = len(self) - 2
 			cumulativeReward = 0
 			prev_epsilon_state = len(self) - 1
 			discount = self.discount
+			greedy_n_step_count = 0
 			while (n >= 0):
 				o = self.buffer[n]
 				if o['terminal']: break;
 				cumulativeReward = o['reward'] + self.discount * cumulativeReward
-				o['reward'] = cumulativeReward
+				o['cumulative_reward'] = cumulativeReward
 				if self.greedy_n_step:
 					o['next_state'] = prev_epsilon_state - n
 				else:
 					o['next_state'] = 1
+				if o['next_state'] > 1:
+					greedy_n_step_count += 1
 				o['discount'] = discount
 				discount *= self.discount
 				if o['is_episode_step']:
@@ -44,7 +87,68 @@ class FastBuffer(AtariBuffer):
 					prev_epsilon_state = n
 					discount = self.discount
 					terminal = False
+				o['episodeInfo'] = self.episodeInfo[-1]
 				n -= 1
+			self.episodeInfo[-1]['greedy_n_step_count'] = greedy_n_step_count
+
+	def printInfo(self):
+		text = 'buf['
+		n = size = len(self.episodeInfo)
+		ignoreMiddle = False
+		def episodeInfo(i):
+			return str(self.episodeInfo[i]['greedy_n_step_count']) + '/' + str(self.episodeInfo[i]['episodeLen'])
+		if n > 10:
+			ignoreMiddle = True
+			n = 5
+		for i in range(n):
+			text += episodeInfo(i) + ' '
+		if ignoreMiddle:
+			text += '... '
+			for i in range(n):
+				text += episodeInfo(size - 1 - i) + ' '
+		text += ']'
+		if not self.essential is None:
+			text += '   ebuf:' + str(len(self.essential))
+		print text
+
+	def sampleBuffer(self, batch, n):
+		size = len(self.buffer) - self.curEpisodeLen
+		while n > 0:
+			k = np.random.randint(size - 1)
+			o = self[k]
+			if not o['terminal']:
+				n -= 1
+				batch['index'].append(k)
+				batch['state'].append(o['state'])
+				batch['reward'].append(o['cumulative_reward'])
+				batch['action'].append(o['action'])
+				batch['discount'].append(o['discount'])
+				o2 = self[k + o['next_state']]
+				batch['terminal'].append(o2['terminal'])
+				batch['next_state'].append(o2['state'])
+
+	def sampleEssential(self, batch, n):
+		size = len(self.essential)
+		while n > 0:
+			k = np.random.randint(size)
+			o = self.essential[k]
+			n -= 1
+			batch['index'].append(k - size) # negativa number for index in essential buffer
+			batch['state'].append(o['state'])
+			batch['reward'].append(o['reward'])
+			batch['action'].append(o['action'])
+			batch['discount'].append(self.discount)
+			batch['terminal'].append(o['terminal'])
+			batch['next_state'].append(o['next_state'])
+
+	def getSampleNums(self, n):
+		if self.essential is None:
+			return n, 0
+		n2 = n / 2
+		if n2 > len(self.essential):
+			n2 = len(self.essential)
+		n1 = n - n2
+		return n1, n2
 
 	def sample(self, n):
 		size = len(self.buffer) - self.curEpisodeLen
@@ -56,22 +160,12 @@ class FastBuffer(AtariBuffer):
 				break
 		if all_terminal: return None
 		# sample
+		n1, n2 = self.getSampleNums(n)
 		batch = ReplayBuffer.observation([],[],[],[],[],[])
 		batch['discount'] = []
 		batch['index'] = []
-		while n > 0:
-			k = np.random.randint(size - 1)
-			o = self[k]
-			if not o['terminal']:
-				n -= 1
-				batch['index'].append(k)
-				batch['state'].append(o['state'])
-				batch['reward'].append(o['reward'])
-				batch['action'].append(o['action'])
-				batch['discount'].append(o['discount'])
-				o2 = self[k + o['next_state']]
-				batch['terminal'].append(o2['terminal'])
-				batch['next_state'].append(o2['state'])
+		self.sampleBuffer(batch, n1) 
+		self.sampleEssential(batch, n2) 
 		# format data
 		batch['state'] = np.array(batch['state'])
 		batch['reward'] = np.array(batch['reward']).astype(np.float)
@@ -109,21 +203,39 @@ class FastAtariRL(AtariRL):
 		self.greedy_n_step = opt['greedy_n_step']
 		AtariRL.__init__(self, opt, NetType, BufferType)
 
+	def report(self):
+		RL.report(self)
+		self.replayBuffer.printInfo()
+
 	def trainStep(self):
 		batch = self.replayBuffer.sample(self.batchSize)
 		if batch:
 			#print 'trainStep -- ' + time.ctime()
-			q2Max = self.computeTarget(batch)
-			target = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
+			qMax = self.computeTarget(batch['next_state'])
+			target = batch['reward'] + qMax * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 			if self.greedy_n_step:
-				q = self.qNetwork.forward(batch['state'])
-				for i in range(q.shape[0]):
+				qTMax, qT, q = self.computeTarget(batch['state'], getAll=True)
+				indexesToRemove = []
+				for i in range(qT.shape[0]):
 					a = batch['action'][i]
-					if q[i, a] > target[i]:
-						k = batch['index'][i]
-						self.replayBuffer[k]['next_state'] = 1
-						self.replayBuffer[k]['discount'] = self.discount
+					k = batch['index'][i]
+					if q:
+						curQ = min(qT[i, a], q[i, a], qTMax[i])
+					else:
+						curQ = min(qT[i, a], qTMax[i])
+					if k >= 0: # index in replay buffer
+						if self.replayBuffer[k]['next_state'] > 1 and curQ > target[i]:						
+							self.replayBuffer[k]['next_state'] = 1
+							self.replayBuffer[k]['discount'] = self.discount
+							self.replayBuffer[k]['cumulative_reward'] = self.replayBuffer[k]['reward']
+							self.replayBuffer[k]['episodeInfo']['greedy_n_step_count'] -= 1
+					else: # index in essential buffer
+						# check and possibly remove an item from essential buffer
+						if curQ > target[i]:
+							k += len(self.replayBuffer.essential.buffer)
+							indexesToRemove.append(k)
+				self.replayBuffer.essential.removeAt(indexesToRemove)
 
 
 if __name__ == '__main__':

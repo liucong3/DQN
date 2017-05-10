@@ -121,20 +121,24 @@ class RL():
 		batch = self.replayBuffer.sample(self.batchSize)
 		if batch:
 			#print 'trainStep -- ' + time.ctime()
-			q2Max = self.computeTarget(batch)
-			target = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
+			qMax = self.computeTarget(batch['next_state'])
+			target = batch['reward'] + qMax * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 
-	def computeTarget(self, batch):
-		next_state = batch['next_state']
+	def computeTarget(self, state, getAll=False):
+		q = None
 		if self.doubleDQN:
-			q2 = self.q(next_state, useTarget=True)
-			q2a = self.q(next_state).argmax(1)
-			q2Max = q2[:, q2a][:, 0]
+			qT = self.q(state, useTarget=True)
+			q = self.q(state).argmax(1)
+			qArgmax = q.argmax(1)
+			qTMax = qT[:, qArgmax][:, 0]
 		else:
-			q2 = self.q(next_state, useTarget=True)
-			q2Max = q2.max(1)
-		return q2Max
+			qT = self.q(state, useTarget=True)
+			qTMax = qT.max(1)
+		if getAll:
+			return qTMax, qT, q
+		else:
+			return qTMax
 
 	def save(self, saveModel=True):
 		if saveModel:
@@ -173,7 +177,7 @@ class RL():
 			time2 = RL.duration(curTime - self.startTime)
 			totalReward = self.totalReward - self.prevTotalReward
 			bufferSize = len(self.replayBuffer)
-			episodeSize = len(self.replayBuffer.episodeLens)
+			episodeSize = len(self.replayBuffer.episodeInfo)
 			print 'S:%d E:%d T|%s, s:%d e:%d t|%s, s/e:%.2f r/e:%.2f B:%d/%d' % (self.step, self.episode, time2, step, episode, time1, (step / episode), (totalReward / episode), bufferSize, episodeSize)
 		self.prevStep = self.step
 		self.prevEpisode = self.episode
@@ -232,10 +236,10 @@ class RL():
 		if not self.debug or not self.evalBatchSize: return
 		batch = self.replayBuffer.sample(self.evalBatchSize)
 		if not batch: return
-		q2Max = self.computeTarget(batch)
+		qMax = self.computeTarget(batch['next_state'])
 		state = batch['state']
 		action = batch['action']
-		targets = batch['reward'] + q2Max * batch['discount'] * (1 - batch['terminal'])
+		targets = batch['reward'] + qMax * batch['discount'] * (1 - batch['terminal'])
 		deltas, output, grads = self.qNetwork.getDebugInfo(state, targets, action)
 		params = self.qNetwork.getParams() if self.debug > 1 else None
 		RL.printDebugInfo4(self.debug, params, deltas, output, grads, self.evalBatchSize)

@@ -137,10 +137,10 @@ class FastAtariRL(AtariRL):
 		validU = valid[:,:self.boundSteps]
 		validL = valid[:,self.boundSteps+1:]
 
-		q2Max = self.computeTarget(batch)
-		q2Max = q2Max.reshape([-1, 2 * self.boundSteps])
-		U = q2Max[:,:self.boundSteps]
-		L = q2Max[:,self.boundSteps+1:]
+		qMax = self.computeTarget(batch['next_state'])
+		qMax = qMax.reshape([-1, 2 * self.boundSteps])
+		U = qMax[:,:self.boundSteps]
+		L = qMax[:,self.boundSteps+1:]
 		discount = self.discount
 		for i in range(self.boundSteps):
 			L[:,i] *= discount
@@ -159,9 +159,9 @@ class FastAtariRL(AtariRL):
 		L = L.max(axis=1)
 
 		rewards = rewards[:,self.boundSteps]
-		q2Max = q2Max[:,self.boundSteps].reshape(-1)
+		qMax = qMax[:,self.boundSteps].reshape(-1)
 		valid = valid[:,self.boundSteps]
-		target = rewards + q2Max * self.discount * (1 - valid)
+		target = rewards + qMax * self.discount * (1 - valid)
 		return batch['state'], target, batch['action'], L, U
 
 	def trainStep(self):

@@ -1,5 +1,5 @@
 {
-    "device" : "/gpu:0",
+    "device" : "/cpu:0",
     "env" : null,
 	"learningRate" : 0.00025,
 
@@ -8,7 +8,7 @@
 	"maxReward" : 1,
 	"clipDelta" : 1,
 
-	"bufSize" : 2e5,
+	"bufSize" : 1e5,
 	"histLen" : 4,
 	"height" : 84,
 	"width" : 84,
@@ -47,5 +47,9 @@
 	"actionPredictions" : 10,
 	"auxiliaryTaskWeights" : 0.01,
 
-	"qDecay" : 1e-3
+	"qDecay" : 1e-2,
+	"greedy_n_step" : true,
+	"essential" : true,
+
+	"debug" : 0
 }

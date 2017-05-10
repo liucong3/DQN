@@ -11,13 +11,19 @@ class Queue:
 	def __len__(self):
 		return self.size
 
-	def __getitem__(self, index):
+	def __getindex(self, index):
 		if index < 0: index = self.size + index
 		assert index < self.size, 'index:%d < self.size:%d' % (index, self.size)
 		index = self.head + index
 		if index >= len(self.data):
 			index -= len(self.data)
-		return self.data[index]
+		return index
+
+	def __getitem__(self, index):
+		return self.data[self.__getindex(index)]
+
+	def __setitem__(self, index, item):
+		self.data[self.__getindex(index)] = item
 
 	def __str__(self):
 		data = self.as_list()
@@ -34,12 +40,22 @@ class Queue:
 				self.tail = 0
 
 	# pop a number (num) of elements from the front
+	# if num<0, pop from tail
 	def dequeue(self, num=1):
+		fromBack = False
+		if num < 0:
+			fromBack = True
+			num = -num
 		assert self.size >= num
 		self.size -= num
-		self.head += num
-		if self.head >= len(self.data):
-			self.head -= len(self.data)
+		if fromBack:
+			self.tail -= num
+			if self.tail < 0:
+				self.tail += len(self.data)
+		else:
+			self.head += num
+			if self.head >= len(self.data):
+				self.head -= len(self.data)
 
 	def clear(self):
 		self.size = self.head = self.tail = 0
@@ -75,7 +91,7 @@ class ReplayBuffer:
 		self.size = size or self.size
 		self.buffer = Queue(self.size)
 		self.curEpisodeLen = 0
-		self.episodeLens = Queue()
+		self.episodeInfo = Queue()
 
 	@staticmethod
 	def observation(state, action, reward, terminal, next_state, is_episode_step):
@@ -85,13 +101,13 @@ class ReplayBuffer:
 		if self.curEpisodeLen > 0:
 			self.buffer[-1]['reward'] = prev_reward
 		self.buffer.enqueue(ReplayBuffer.observation(state, None, None, terminal, None, None))
-		if len(self.buffer) >= self.size and len(self.episodeLens) > 0:
-			episodeLen = self.episodeLens[0]
-			self.episodeLens.dequeue()
+		if len(self.buffer) >= self.size and len(self.episodeInfo) > 0:
+			episodeLen = self.episodeInfo[0]['episodeLen']
+			self.episodeInfo.dequeue()
 			self.buffer.dequeue(episodeLen)
 		self.curEpisodeLen += 1
 		if terminal:
-			self.episodeLens.enqueue(self.curEpisodeLen)
+			self.episodeInfo.enqueue({'episodeLen':self.curEpisodeLen})
 			self.curEpisodeLen = 0
 
 	def appendAction(self, action, is_episode_step):
