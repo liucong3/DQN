@@ -126,19 +126,18 @@ class RL():
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 
 	def computeTarget(self, state, getAll=False):
-		q = None
 		if self.doubleDQN:
-			qT = self.q(state, useTarget=True)
-			q = self.q(state).argmax(1)
-			qArgmax = q.argmax(1)
-			qTMax = qT[:, qArgmax][:, 0]
+			targetQs = self.q(state, useTarget=True)
+			qs = self.q(state)
 		else:
-			qT = self.q(state, useTarget=True)
-			qTMax = qT.max(1)
+			targetQs = self.q(state, useTarget=True)
+			qs = targetQs
+		action = qs.argmax(1)
+		qMax = targetQs[:, action][:, 0]
 		if getAll:
-			return qTMax, qT, q
+			return qMax, targetQs, qs, action
 		else:
-			return qTMax
+			return qMax
 
 	def save(self, saveModel=True):
 		if saveModel:

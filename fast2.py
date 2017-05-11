@@ -92,7 +92,7 @@ class FastBuffer(AtariBuffer):
 			self.episodeInfo[-1]['greedy_n_step_count'] = greedy_n_step_count
 
 	def printInfo(self):
-		text = 'buf['
+		text = 'buf: [ '
 		n = size = len(self.episodeInfo)
 		ignoreMiddle = False
 		def episodeInfo(i):
@@ -215,24 +215,20 @@ class FastAtariRL(AtariRL):
 			target = batch['reward'] + qMax * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 			if self.greedy_n_step:
-				qTMax, qT, q = self.computeTarget(batch['state'], getAll=True)
+				qMax, _, _, action = self.computeTarget(batch['state'], getAll=True)
 				indexesToRemove = []
 				for i in range(qT.shape[0]):
 					a = batch['action'][i]
 					k = batch['index'][i]
-					if q:
-						curQ = min(qT[i, a], q[i, a], qTMax[i])
-					else:
-						curQ = min(qT[i, a], qTMax[i])
 					if k >= 0: # index in replay buffer
-						if self.replayBuffer[k]['next_state'] > 1 and curQ > target[i]:						
+						if self.replayBuffer[k]['next_state'] > 1 and qMax[i] > target[i]:						
 							self.replayBuffer[k]['next_state'] = 1
 							self.replayBuffer[k]['discount'] = self.discount
 							self.replayBuffer[k]['cumulative_reward'] = self.replayBuffer[k]['reward']
 							self.replayBuffer[k]['episodeInfo']['greedy_n_step_count'] -= 1
 					else: # index in essential buffer
 						# check and possibly remove an item from essential buffer
-						if curQ > target[i]:
+						if action[i] != a and qMax[i] > target[i]:
 							k += len(self.replayBuffer.essential.buffer)
 							indexesToRemove.append(k)
 				self.replayBuffer.essential.removeAt(indexesToRemove)
