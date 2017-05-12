@@ -17,50 +17,84 @@ from buffer import Queue, ReplayBuffer, AtariBuffer
 
 class EssentialBuffer:
 
-	def __init__(self):
-		self.buffer = Queue()
+	def __init__(self, maxSize):
+		self.maxSize = int(maxSize)
+		self.buffer = Queue(self.maxSize)
 
 	def add(self, item):
-		self.buffer.append(item)
+		if len(self.buffer) == self.maxSize:
+			self.buffer.dequeue()
+		self.buffer.enqueue(item)
 
 	def removeAt(self, indexes):
-		if isinstance(indexes, (list, tuple)):
+		if isinstance(indexes, (set, list, tuple)):
+			indexes = list(indexes)
 			indexes.sort(reverse=True)
 			for index in indexes:
 				self.removeAt(index)
 		else:
-			self[indexes] = self[-1]
-			self.dequeue(-1)
+			self.buffer[indexes] = self.buffer[-1]
+			self.buffer.dequeue(-1)
 
 	def __len__(self):
 		return len(self.buffer)
+
+	@staticmethod
+	def holdStateInfo(buffer, index, histLen):
+		info = [None] * histLen
+		for i in range(histLen):
+			if index - i < 0: break
+			if buffer[index - i]['terminal']: break
+			info[histLen - i - 1] = buffer[index - i]['state']
+		return info
+
+	@staticmethod
+	def __getState(info, shape):
+		histLen = len(info)
+		state = np.zeros(shape)
+		for i in range(histLen):
+			if info[i] is None: continue
+			state[:, i] = info[i].astype(np.float) / 255.0
+		return state.reshape(-1)
+
+	def getState(self, index, shape):
+		item = self.buffer[index]
+		o = item.copy()
+		o['state'] = EssentialBuffer.__getState(item['state'], shape)
+		o['next_state'] = EssentialBuffer.__getState(item['next_state'], shape)
+		return o
 
 
 class FastBuffer(AtariBuffer):
 
 	def __init__(self, opt):
 		self.greedy_n_step = opt['greedy_n_step']
-		self.essential = EssentialBuffer() if opt['essential'] else None
+		self.essential = EssentialBuffer(opt['bufSize']) if opt['essential'] else None
 		AtariBuffer.__init__(self, opt)
+
+	def __buildEssentialItem(self, i):
+		eo = {}
+		eo['state'] = EssentialBuffer.holdStateInfo(self.buffer, i, self.histLen)
+		o = self.buffer[i]
+		eo['reward'] = o['reward']
+		eo['action'] = o['action']
+		o2 = self.buffer[i + 1]
+		eo['terminal'] = o2['terminal']
+		eo['next_state'] = EssentialBuffer.holdStateInfo(self.buffer, i+1, self.histLen)
+		return eo
 
 	def _add_items_into_essential_buffer(self):
 		episodeLen = self.episodeInfo[0]['episodeLen']
 		for i in xrange(episodeLen - 1):
-			o = self[i]
+			o = self.buffer[i]
 			assert not o['terminal']
 			if o['is_episode_step']:
-				eo = {}
-				eo['state'] = o['state']
-				eo['reward'] = o['reward']
-				eo['action'] = o['action']
-				o2 = self[i + 1]
-				eo['terminal'] = o2['terminal']
-				eo['next_state'] = o2['state']
-
+				eo = self.__buildEssentialItem(i)
+				self.essential.add(eo)
 
 	def append(self, state, prev_reward, terminal):
 		if not self.essential is None:
-			if len(self.buffer) >= self.size - 1 and len(self.episodeInfo) > 0:
+			if len(self.buffer) + 1 >= self.size and len(self.episodeInfo) > 0:
 				self._add_items_into_essential_buffer()
 		AtariBuffer.append(self, state, prev_reward, terminal)
 		if terminal:
@@ -129,9 +163,10 @@ class FastBuffer(AtariBuffer):
 
 	def sampleEssential(self, batch, n):
 		size = len(self.essential)
+		shape = list(self.buffer[0]['state'].shape) + [self.histLen]
 		while n > 0:
 			k = np.random.randint(size)
-			o = self.essential[k]
+			o = self.essential.getState(k, shape)
 			n -= 1
 			batch['index'].append(k - size) # negativa number for index in essential buffer
 			batch['state'].append(o['state'])
@@ -215,13 +250,14 @@ class FastAtariRL(AtariRL):
 			target = batch['reward'] + qMax * batch['discount'] * (1 - batch['terminal'])
 			self.qNetwork.trainStep(batch['state'], target, batch['action'])
 			if self.greedy_n_step:
-				qMax, _, _, action = self.computeTarget(batch['state'], getAll=True)
-				indexesToRemove = []
-				for i in range(qT.shape[0]):
+				qMax, targetQs, qs, action = self.computeTarget(batch['state'], getAll=True)
+				indexesToRemove = set()
+				for i in range(qMax.shape[0]):
 					a = batch['action'][i]
 					k = batch['index'][i]
 					if k >= 0: # index in replay buffer
-						if self.replayBuffer[k]['next_state'] > 1 and qMax[i] > target[i]:						
+						q = min(targetQs[i, a], qs[i, a]) # to mitigate over-estimation
+						if self.replayBuffer[k]['next_state'] > 1 and q > target[i]:						
 							self.replayBuffer[k]['next_state'] = 1
 							self.replayBuffer[k]['discount'] = self.discount
 							self.replayBuffer[k]['cumulative_reward'] = self.replayBuffer[k]['reward']
@@ -229,9 +265,10 @@ class FastAtariRL(AtariRL):
 					else: # index in essential buffer
 						# check and possibly remove an item from essential buffer
 						if action[i] != a and qMax[i] > target[i]:
-							k += len(self.replayBuffer.essential.buffer)
-							indexesToRemove.append(k)
-				self.replayBuffer.essential.removeAt(indexesToRemove)
+							k += len(self.replayBuffer.essential)
+							indexesToRemove.add(k)
+				if len(indexesToRemove) > 0:
+					self.replayBuffer.essential.removeAt(indexesToRemove)
 
 
 if __name__ == '__main__':
